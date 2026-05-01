@@ -1,0 +1,325 @@
+"use client"
+
+import { useState, useRef, useEffect } from "react"
+import { cn } from "@/lib/utils"
+import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X } from "lucide-react"
+import Image from "next/image"
+import { Button } from "@/components/ui/button"
+
+interface Message {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  timestamp: Date
+  type?: "normal" | "alert" | "insight" | "warning"
+}
+
+interface AIAlert {
+  id: string
+  type: "warning" | "danger" | "insight"
+  title: string
+  message: string
+  timestamp: Date
+}
+
+const initialMessages: Message[] = [
+  {
+    id: "1",
+    role: "assistant",
+    content: "Systems online. Memory active. I am monitoring your positions in real-time.",
+    timestamp: new Date(),
+    type: "normal",
+  },
+]
+
+const aiAlerts: AIAlert[] = [
+  {
+    id: "a1",
+    type: "warning",
+    title: "Market Momentum Weakening",
+    message: "BTC showing divergence on 4H timeframe. Consider reducing exposure.",
+    timestamp: new Date(Date.now() - 120000),
+  },
+  {
+    id: "a2",
+    type: "danger",
+    title: "Risk Increasing",
+    message: "BTC position leverage at 10x with 12% proximity to liquidation.",
+    timestamp: new Date(Date.now() - 60000),
+  },
+  {
+    id: "a3",
+    type: "insight",
+    title: "Pattern Detected",
+    message: "Historical data suggests consolidation phase. Avg duration: 4-6 hours.",
+    timestamp: new Date(),
+  },
+]
+
+export function TanitPanel({ 
+  isExpanded = true, 
+  onToggle,
+  className 
+}: { 
+  isExpanded?: boolean
+  onToggle?: () => void
+  className?: string 
+}) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  const [input, setInput] = useState("")
+  const [isTyping, setIsTyping] = useState(false)
+  const [showAlerts, setShowAlerts] = useState(true)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  const handleSend = async () => {
+    if (!input.trim()) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsTyping(true)
+
+    setTimeout(() => {
+      const responses = [
+        { content: "Analyzing market conditions. BTC showing consolidation with declining volume. Recommend maintaining current positions.", type: "insight" as const },
+        { content: "Memory updated. I have noted your risk tolerance adjustment.", type: "normal" as const },
+        { content: "Warning: Current leverage on BTC position exceeds your defined risk parameters.", type: "warning" as const },
+        { content: "Market observation: ETH/BTC ratio strengthening. Consider rebalancing towards ETH.", type: "insight" as const },
+        { content: "Risk assessment complete. Portfolio heat at 42% - within acceptable range.", type: "normal" as const },
+        { content: "Alert: Funding rate turning negative. Short positions may become expensive.", type: "alert" as const },
+      ]
+      
+      const response = responses[Math.floor(Math.random() * responses.length)]
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: response.content,
+        timestamp: new Date(),
+        type: response.type,
+      }
+      
+      setMessages((prev) => [...prev, assistantMessage])
+      setIsTyping(false)
+    }, 1500)
+  }
+
+  return (
+    <div className={cn(
+      "flex flex-col h-full glass-panel-dark border-l border-border/30",
+      className
+    )}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-primary/50 glow-magenta-sm">
+              <Image
+                src="/images/tanit-avatar.jpeg"
+                alt="Tanit AI"
+                width={40}
+                height={40}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-success border-2 border-card animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-foreground">TANIT</h3>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/20 text-primary uppercase tracking-wider">AI</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+              <p className="text-[10px] text-success font-medium">Online • Monitoring</p>
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onToggle}
+          className="lg:hidden p-2 rounded-lg hover:bg-muted/50 transition-colors"
+        >
+          <X className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* AI Alerts Section */}
+      <div className="border-b border-border/30">
+        <button
+          onClick={() => setShowAlerts(!showAlerts)}
+          className="w-full px-4 py-2 flex items-center justify-between hover:bg-muted/20 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+            <span className="text-xs font-medium text-foreground">Active Alerts</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-destructive/20 text-destructive">
+              {aiAlerts.length}
+            </span>
+          </div>
+          {showAlerts ? (
+            <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+        </button>
+        
+        {showAlerts && (
+          <div className="px-3 pb-3 space-y-2 animate-slide-up">
+            {aiAlerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={cn(
+                  "p-3 rounded-lg border transition-all",
+                  alert.type === "danger" && "glass-panel-danger border-destructive/30 animate-pulse-danger",
+                  alert.type === "warning" && "bg-warning/5 border-warning/30",
+                  alert.type === "insight" && "bg-primary/5 border-primary/30"
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  {alert.type === "danger" && <AlertTriangle className="h-3.5 w-3.5 text-destructive mt-0.5 flex-shrink-0" />}
+                  {alert.type === "warning" && <TrendingDown className="h-3.5 w-3.5 text-warning mt-0.5 flex-shrink-0" />}
+                  {alert.type === "insight" && <Brain className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p className={cn(
+                      "text-xs font-semibold",
+                      alert.type === "danger" && "text-destructive",
+                      alert.type === "warning" && "text-warning",
+                      alert.type === "insight" && "text-primary"
+                    )}>
+                      {alert.title}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                      {alert.message}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={cn(
+              "flex animate-slide-up",
+              message.role === "user" ? "justify-end" : "justify-start"
+            )}
+          >
+            <div
+              className={cn(
+                "max-w-[90%] rounded-2xl px-4 py-2.5 text-sm",
+                message.role === "user"
+                  ? "bg-primary text-primary-foreground rounded-br-md"
+                  : message.type === "warning"
+                    ? "bg-warning/10 border border-warning/30 text-foreground rounded-bl-md"
+                    : message.type === "alert"
+                      ? "bg-destructive/10 border border-destructive/30 text-foreground rounded-bl-md"
+                      : message.type === "insight"
+                        ? "bg-primary/10 border border-primary/30 text-foreground rounded-bl-md"
+                        : "bg-muted text-foreground rounded-bl-md"
+              )}
+            >
+              {message.content}
+            </div>
+          </div>
+        ))}
+        {isTyping && (
+          <div className="flex justify-start animate-slide-up">
+            <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+              <div className="flex gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="p-3 border-t border-border/30 bg-card/30">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleSend()
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask Tanit..."
+            className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
+          />
+          <Button
+            type="submit"
+            size="icon"
+            className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90 glow-magenta-sm"
+            disabled={!input.trim()}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Mobile floating button to open Tanit
+export function TanitMobileButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full glow-magenta flex items-center justify-center transition-transform hover:scale-110 overflow-hidden border-2 border-primary/50 shadow-cinematic lg:hidden"
+      aria-label="Open Tanit"
+    >
+      <Image
+        src="/images/tanit-avatar.jpeg"
+        alt="Tanit AI"
+        width={56}
+        height={56}
+        className="h-full w-full object-cover"
+      />
+      <span className="absolute top-1 right-1 h-3 w-3 rounded-full bg-destructive border-2 border-card animate-pulse" />
+    </button>
+  )
+}
+
+// Mobile bottom sheet
+export function TanitMobileSheet({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null
+  
+  return (
+    <div className="fixed inset-0 z-50 lg:hidden">
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 right-0 h-[85vh] bg-card rounded-t-3xl shadow-cinematic-lg animate-slide-up">
+        <div className="h-full flex flex-col">
+          <div className="flex justify-center pt-3 pb-2">
+            <div className="w-12 h-1.5 rounded-full bg-muted" />
+          </div>
+          <TanitPanel onToggle={onClose} className="flex-1 rounded-t-2xl" />
+        </div>
+      </div>
+    </div>
+  )
+}
