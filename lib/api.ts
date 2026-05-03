@@ -72,8 +72,8 @@ export interface TanitChatMessage {
   content: string;
   actions: string | null;
   channel?: "intimate" | "operational";
-  sender_type?: SenderType;
-  created_at: string;
+  senderType?: SenderType;
+  createdAt: string;
 }
 
 export interface PersonalMemory {
