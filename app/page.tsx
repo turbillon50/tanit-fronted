@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { MainLayout } from "@/components/layout/main-layout"
 import { cn } from "@/lib/utils"
-import { Brain, Zap, Activity, Radio, TrendingUp, TrendingDown, AlertTriangle, ChevronRight, Shield } from "lucide-react"
+import { Brain, Zap, Activity, Radio, TrendingUp, AlertTriangle, ChevronRight, Shield } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { api, type TanitState, type PortfolioBalance, type PortfolioPosition } from "@/lib/api"
@@ -55,8 +55,14 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent" />
           <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-xl overflow-hidden border border-border/50 shadow-cinematic flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
-                <div className="h-10 w-10 rounded-full border-2 border-primary glow-magenta-sm animate-pulse" />
+              <div className="h-14 w-14 rounded-xl overflow-hidden border border-border/50 shadow-cinematic">
+                <Image
+                  src="/images/votan-logo.jpeg"
+                  alt="V·Tanit"
+                  width={56}
+                  height={56}
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div>
                 <h1 className="text-xl font-bold chrome-text">Command Center</h1>
