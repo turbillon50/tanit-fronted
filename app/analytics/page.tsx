@@ -1,188 +1,240 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { MainLayout } from "@/components/layout/main-layout"
-import { EquityCurve } from "@/components/analytics/equity-curve"
-import { PnLChart } from "@/components/analytics/pnl-chart"
-import { PerformanceMetrics, DetailedMetrics } from "@/components/analytics/performance-metrics"
-import { MetricsCard } from "@/components/dashboard/metrics-card"
-import { Download, FileText, Calendar } from "lucide-react"
+import { TrendingUp, BarChart3, Target, Zap } from "lucide-react"
+import { api, type PortfolioStats, type BalanceSnapshot, type PortfolioPosition, type PortfolioBalance } from "@/lib/api"
 
 export default function AnalyticsPage() {
+  const [stats, setStats] = useState<PortfolioStats | null>(null)
+  const [snapshots, setSnapshots] = useState<BalanceSnapshot[]>([])
+  const [balance, setBalance] = useState<PortfolioBalance | null>(null)
+  const [positions, setPositions] = useState<PortfolioPosition[]>([])
+
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      try {
+        const [s, sn, b, p] = await Promise.all([
+          api.stats().catch(() => null),
+          api.balanceSnapshots(200).catch(() => null),
+          api.balance().catch(() => null),
+          api.positions().catch(() => []),
+        ])
+        if (!mounted) return
+        if (s) setStats(s)
+        if (sn) setSnapshots(sn.snapshots ?? [])
+        if (b) setBalance(b)
+        setPositions(p)
+      } catch {}
+    }
+    load()
+    const id = setInterval(load, 15000)
+    return () => { mounted = false; clearInterval(id) }
+  }, [])
+
+  // Equity curve from snapshots
+  const firstBal = snapshots[0] ? parseFloat(snapshots[0].balance) : 0
+  const lastBal = balance?.totalEquity ?? (snapshots[snapshots.length - 1] ? parseFloat(snapshots[snapshots.length - 1].balance) : 0)
+  const peakBal = snapshots.length > 0 ? Math.max(...snapshots.map((s) => parseFloat(s.balance)), lastBal) : lastBal
+  const totalReturn = firstBal > 0 ? ((lastBal - firstBal) / firstBal) * 100 : 0
+  const drawdown = peakBal > 0 ? ((peakBal - lastBal) / peakBal) * 100 : 0
+
+  // Build SVG path for equity curve
+  const curvePoints: { x: number; y: number; v: number }[] = []
+  if (snapshots.length > 0) {
+    const allValues = [...snapshots.map((s) => parseFloat(s.balance)), lastBal]
+    const min = Math.min(...allValues)
+    const max = Math.max(...allValues)
+    const range = max - min || 1
+    const fullSeries = [...snapshots, { id: -1, balance: String(lastBal), equity: null, available: null, note: null, created_at: new Date().toISOString() }]
+    fullSeries.forEach((s, i) => {
+      const x = (i / (fullSeries.length - 1 || 1)) * 100
+      const y = 100 - ((parseFloat(s.balance) - min) / range) * 100
+      curvePoints.push({ x, y, v: parseFloat(s.balance) })
+    })
+  }
+  const path = curvePoints.length > 0
+    ? "M " + curvePoints.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" L ")
+    : ""
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold chrome-text">Analytics</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Comprehensive performance analysis • Simulated data
-            </p>
-          </div>
-          
-          {/* Export Buttons */}
-          <div className="flex items-center gap-2">
-            <button className="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <Calendar className="h-4 w-4" />
-              Last 90 Days
-            </button>
-            <button className="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <FileText className="h-4 w-4" />
-              PDF Report
-            </button>
-            <button className="bg-primary text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-medium hover:bg-primary/90 transition-colors glow-magenta-sm">
-              <Download className="h-4 w-4" />
-              Export
-            </button>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold chrome-text flex items-center gap-3">
+            <BarChart3 className="h-7 w-7 text-primary" />
+            Analytics
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Performance real desde {snapshots.length} snapshots de balance
+          </p>
         </div>
 
-        {/* Summary Metrics */}
+        {/* Top metrics — REAL */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricsCard
+          <MetricCard
             title="Total Return"
-            value="+184.6%"
-            change="+$184,621"
-            changeType="positive"
-            subtitle="Since inception"
+            value={firstBal > 0 ? `${totalReturn >= 0 ? "+" : ""}${totalReturn.toFixed(2)}%` : "—"}
+            change={firstBal > 0 ? `Started $${firstBal.toFixed(2)}` : "Awaiting first snapshot"}
+            positive={totalReturn >= 0}
+            icon={<TrendingUp className="h-4 w-4" />}
           />
-          <MetricsCard
+          <MetricCard
+            title="Current Equity"
+            value={`$${lastBal.toFixed(2)}`}
+            change={`Peak $${peakBal.toFixed(2)}`}
+            positive={true}
+            icon={<Target className="h-4 w-4" />}
+          />
+          <MetricCard
+            title="Drawdown"
+            value={`${drawdown.toFixed(2)}%`}
+            change={drawdown < 5 ? "Healthy" : drawdown < 15 ? "Watch" : "Critical"}
+            positive={drawdown < 5}
+            icon={<Zap className="h-4 w-4" />}
+          />
+          <MetricCard
             title="Win Rate"
-            value="68%"
-            change="156W / 73L"
-            changeType="positive"
-            subtitle="229 total trades"
-          />
-          <MetricsCard
-            title="Profit Factor"
-            value="2.14"
-            change="Target: 1.5"
-            changeType="positive"
-            subtitle="Above benchmark"
-          />
-          <MetricsCard
-            title="Max Drawdown"
-            value="-12.4%"
-            change="Within limits"
-            changeType="neutral"
-            subtitle="Peak to trough"
+            value={stats ? `${stats.winRate}%` : "—"}
+            change={stats ? `${stats.totalTrades} trades · PF ${stats.profitFactor.toFixed(2)}` : "Loading"}
+            positive={stats ? stats.winRate >= 40 : true}
+            icon={<BarChart3 className="h-4 w-4" />}
           />
         </div>
 
         {/* Equity Curve */}
-        <EquityCurve />
-
-        {/* PnL & Metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <PnLChart />
-          
-          {/* Drawdown Chart Placeholder */}
-          <div className="glass-panel rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-border/50">
-              <h3 className="text-sm font-semibold text-foreground">Drawdown</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Portfolio decline from peaks</p>
+        <div className="glass-panel rounded-xl p-5">
+          <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            Equity Curve
+          </h2>
+          {curvePoints.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Cargando snapshots…</p>
+          ) : (
+            <div className="relative h-48 w-full">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+                <path d={path} fill="none" stroke="currentColor" strokeWidth="0.6" className="text-primary" />
+                <path d={path + ` L 100 100 L 0 100 Z`} fill="currentColor" opacity="0.1" className="text-primary" />
+              </svg>
+              <div className="absolute top-2 left-2 text-[10px] text-muted-foreground">
+                Peak ${peakBal.toFixed(2)}
+              </div>
+              <div className="absolute bottom-2 left-2 text-[10px] text-muted-foreground">
+                ${Math.min(...curvePoints.map((p) => p.v)).toFixed(2)}
+              </div>
             </div>
-            
-            <div className="p-6">
-              <div className="space-y-4">
-                <DrawdownBar label="Current" value={3.2} max={20} />
-                <DrawdownBar label="Max (Feb 8)" value={12.4} max={20} isMax />
-                <DrawdownBar label="Avg" value={5.8} max={20} />
-              </div>
-              
-              <div className="mt-6 p-4 rounded-lg bg-muted/20">
-                <p className="text-xs text-muted-foreground">
-                  Current drawdown is <span className="text-success font-medium">3.2%</span> from the all-time high of <span className="text-foreground font-medium">$296,420</span>. 
-                  Maximum drawdown of 12.4% occurred on February 8th during a market-wide correction.
-                </p>
-              </div>
+          )}
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">Inicio</p>
+              <p className="text-sm font-bold">${firstBal.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">Pico</p>
+              <p className="text-sm font-bold">${peakBal.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase">Hoy</p>
+              <p className={`text-sm font-bold ${totalReturn >= 0 ? "text-success" : "text-destructive"}`}>
+                ${lastBal.toFixed(2)} ({totalReturn >= 0 ? "+" : ""}{totalReturn.toFixed(2)}%)
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Win Rate & Distribution */}
-        <PerformanceMetrics />
-
-        {/* Detailed Metrics */}
-        <DetailedMetrics />
-
-        {/* Recent Performance */}
-        <div className="glass-panel rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border/50">
-            <h3 className="text-sm font-semibold text-foreground">Recent Trade History</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Last 10 trades</p>
+        {/* Stats grid */}
+        {stats && (
+          <div className="glass-panel rounded-xl p-5">
+            <h2 className="text-sm font-bold text-foreground mb-4">Performance Metrics</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Stat label="Total Trades" value={String(stats.totalTrades)} />
+              <Stat label="Win Rate" value={`${stats.winRate}%`} />
+              <Stat label="Profit Factor" value={stats.profitFactor.toFixed(2)} />
+              <Stat label="Total PnL" value={`${stats.totalPnl >= 0 ? "+" : ""}$${stats.totalPnl.toFixed(4)}`} />
+              <Stat label="Avg Win" value={`+$${stats.avgWin.toFixed(4)}`} />
+              <Stat label="Avg Loss" value={`$${stats.avgLoss.toFixed(4)}`} />
+              <Stat label="Best Trade" value={`+$${stats.bestTrade.toFixed(4)}`} />
+              <Stat label="Worst Trade" value={`$${stats.worstTrade.toFixed(4)}`} />
+            </div>
+            <div className="mt-4 pt-4 border-t border-border/30">
+              <p className="text-[10px] text-muted-foreground uppercase">Current Streak</p>
+              <p
+                className={`text-lg font-bold ${
+                  stats.currentStreak > 0
+                    ? "text-success"
+                    : stats.currentStreak < 0
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {stats.currentStreak === 0
+                  ? "—"
+                  : stats.currentStreak > 0
+                  ? `🟢 ${stats.currentStreak} wins en racha`
+                  : `🔴 ${Math.abs(stats.currentStreak)} losses en racha`}
+              </p>
+            </div>
           </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border/30">
-                  <th className="px-4 py-3 text-left text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Date</th>
-                  <th className="px-4 py-3 text-left text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Pair</th>
-                  <th className="px-4 py-3 text-left text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Side</th>
-                  <th className="px-4 py-3 text-left text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Entry</th>
-                  <th className="px-4 py-3 text-left text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Exit</th>
-                  <th className="px-4 py-3 text-right text-[10px] text-muted-foreground uppercase tracking-wider font-medium">PnL</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/20">
-                <TradeRow date="Apr 30" pair="BTC/USDT" side="long" entry="$66,420" exit="$67,842" pnl="+$1,422" />
-                <TradeRow date="Apr 29" pair="ETH/USDT" side="long" entry="$3,480" exit="$3,521" pnl="+$205" />
-                <TradeRow date="Apr 28" pair="SOL/USDT" side="short" entry="$152" exit="$148" pnl="+$400" />
-                <TradeRow date="Apr 27" pair="BTC/USDT" side="short" entry="$67,800" exit="$68,200" pnl="-$400" />
-                <TradeRow date="Apr 26" pair="ETH/USDT" side="long" entry="$3,320" exit="$3,480" pnl="+$800" />
-              </tbody>
-            </table>
+        )}
+
+        {/* Open positions snapshot */}
+        {positions.length > 0 && (
+          <div className="glass-panel rounded-xl p-5">
+            <h2 className="text-sm font-bold text-foreground mb-3">
+              Posiciones abiertas ahora ({positions.length})
+            </h2>
+            <ul className="space-y-1.5">
+              {positions.map((p) => (
+                <li key={p.symbol} className="flex items-center justify-between text-xs">
+                  <span className="font-mono">
+                    {p.symbol.replace("USDT", "")} · {p.side === "Buy" ? "LONG" : "SHORT"} {p.leverage}x
+                  </span>
+                  <span className={p.unrealizedPnl >= 0 ? "text-success" : "text-destructive"}>
+                    {p.unrealizedPnl >= 0 ? "+" : ""}${p.unrealizedPnl.toFixed(4)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
+        )}
       </div>
     </MainLayout>
   )
 }
 
-function DrawdownBar({ label, value, max, isMax = false }: { label: string; value: number; max: number; isMax?: boolean }) {
+function MetricCard({
+  title,
+  value,
+  change,
+  positive,
+  icon,
+}: {
+  title: string
+  value: string
+  change: string
+  positive: boolean
+  icon: React.ReactNode
+}) {
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className={`text-xs font-medium ${isMax ? "text-destructive" : "text-foreground"}`}>
-          -{value}%
-        </span>
+    <div className="glass-panel rounded-xl p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{title}</span>
+        <div className={`p-1.5 rounded-lg ${positive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
+          {icon}
+        </div>
       </div>
-      <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${isMax ? "bg-destructive" : "bg-accent"}`}
-          style={{ width: `${(value / max) * 100}%` }}
-        />
-      </div>
+      <p className="text-2xl font-bold chrome-text">{value}</p>
+      <p className={`text-[10px] mt-1 ${positive ? "text-success" : "text-muted-foreground"}`}>{change}</p>
     </div>
   )
 }
 
-function TradeRow({ date, pair, side, entry, exit, pnl }: { 
-  date: string
-  pair: string
-  side: "long" | "short"
-  entry: string
-  exit: string
-  pnl: string
-}) {
-  const isProfit = pnl.startsWith("+")
-  
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <tr className="hover:bg-muted/10 transition-colors">
-      <td className="px-4 py-3 text-xs text-foreground">{date}</td>
-      <td className="px-4 py-3 text-xs font-medium text-foreground">{pair}</td>
-      <td className="px-4 py-3">
-        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${
-          side === "long" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-        }`}>
-          {side}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{entry}</td>
-      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{exit}</td>
-      <td className={`px-4 py-3 text-xs font-semibold text-right ${isProfit ? "text-success" : "text-destructive"}`}>
-        {pnl}
-      </td>
-    </tr>
+    <div>
+      <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
+      <p className="text-sm font-bold mt-0.5">{value}</p>
+    </div>
   )
 }
