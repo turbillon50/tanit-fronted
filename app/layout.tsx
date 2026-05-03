@@ -4,36 +4,35 @@ import { Analytics } from '@vercel/analytics/next'
 import { AppWrapper } from '@/components/app-wrapper'
 import './globals.css'
 
-const inter = Inter({ 
+const inter = Inter({
   subsets: ["latin"],
   variable: '--font-inter'
 })
 
-const geistMono = Geist_Mono({ 
+const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: '--font-geist-mono'
 })
 
 export const metadata: Metadata = {
-  title: 'V•Tanit | AI Trading Intelligence',
-  description: 'Premium AI-powered trading platform with persistent memory and institutional-grade execution.',
-  generator: 'v0.app',
+  title: 'V·Tan',
+  description: 'Tanit AI Trading Intelligence — autonomous crypto trading with persistent memory.',
+  applicationName: 'V·Tan',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'V·Tan',
+    statusBarStyle: 'black-translucent',
+  },
   icons: {
     icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/apple-icon.png',
+    apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
 }
 
@@ -41,7 +40,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#000000',
+  themeColor: '#ff4fb8',
 }
 
 export default function RootLayout({
