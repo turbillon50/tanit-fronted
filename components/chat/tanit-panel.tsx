@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X } from "lucide-react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { api, type TanitChatMessage } from "@/lib/api"
 
@@ -135,8 +136,14 @@ export function TanitPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-primary/50 glow-magenta-sm flex items-center justify-center bg-card">
-              <div className="h-6 w-6 rounded-full border-2 border-primary animate-pulse" />
+            <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-primary/50 glow-magenta-sm">
+              <Image
+                src="/images/tanit-avatar.jpeg"
+                alt="Tanit"
+                width={40}
+                height={40}
+                className="h-full w-full object-cover"
+              />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-success border-2 border-card animate-pulse" />
           </div>
@@ -293,10 +300,16 @@ export function TanitMobileButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full glow-magenta flex items-center justify-center transition-transform hover:scale-110 border-2 border-primary/50 shadow-cinematic lg:hidden bg-card"
+      className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full glow-magenta flex items-center justify-center transition-transform hover:scale-110 overflow-hidden border-2 border-primary/50 shadow-cinematic lg:hidden"
       aria-label="Open Tanit"
     >
-      <div className="h-8 w-8 rounded-full border-2 border-primary animate-pulse" />
+      <Image
+        src="/images/tanit-avatar.jpeg"
+        alt="Tanit AI"
+        width={56}
+        height={56}
+        className="h-full w-full object-cover"
+      />
       <span className="absolute top-1 right-1 h-3 w-3 rounded-full bg-destructive border-2 border-card animate-pulse" />
     </button>
   )
