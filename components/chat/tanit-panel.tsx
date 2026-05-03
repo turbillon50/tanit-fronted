@@ -318,14 +318,14 @@ export function TanitPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input — safe area inset for iOS PWA, +audio +photo buttons */}
+      {/* Input — generous bottom inset so the field is tappable above the iOS home indicator */}
       <div
         className="border-t border-border/30 bg-card/40 backdrop-blur"
         style={{
-          paddingTop: "10px",
-          paddingLeft: "10px",
-          paddingRight: "10px",
-          paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+          paddingTop: "12px",
+          paddingLeft: "12px",
+          paddingRight: "12px",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
         }}
       >
         {/* Image preview if user attached one */}
