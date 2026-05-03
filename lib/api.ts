@@ -135,7 +135,7 @@ export interface BalanceSnapshot {
   equity: string | null;
   available: string | null;
   note: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
 export const api = {
