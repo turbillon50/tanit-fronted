@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X } from "lucide-react"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
+import { api, type TanitChatMessage } from "@/lib/api"
 
-interface Message {
+interface UIMessage {
   id: string
   role: "user" | "assistant"
   content: string
@@ -22,54 +22,63 @@ interface AIAlert {
   timestamp: Date
 }
 
-const initialMessages: Message[] = [
-  {
-    id: "1",
-    role: "assistant",
-    content: "Systems online. Memory active. I am monitoring your positions in real-time.",
-    timestamp: new Date(),
-    type: "normal",
-  },
-]
-
 const aiAlerts: AIAlert[] = [
   {
     id: "a1",
-    type: "warning",
-    title: "Market Momentum Weakening",
-    message: "BTC showing divergence on 4H timeframe. Consider reducing exposure.",
-    timestamp: new Date(Date.now() - 120000),
-  },
-  {
-    id: "a2",
-    type: "danger",
-    title: "Risk Increasing",
-    message: "BTC position leverage at 10x with 12% proximity to liquidation.",
-    timestamp: new Date(Date.now() - 60000),
-  },
-  {
-    id: "a3",
     type: "insight",
-    title: "Pattern Detected",
-    message: "Historical data suggests consolidation phase. Avg duration: 4-6 hours.",
+    title: "Bot active",
+    message: "Tanit is scanning 24 symbols and trading via Bybit proxy.",
     timestamp: new Date(),
   },
 ]
 
-export function TanitPanel({ 
-  isExpanded = true, 
+function adapt(m: TanitChatMessage): UIMessage {
+  return {
+    id: String(m.id),
+    role: m.role,
+    content: m.content,
+    timestamp: new Date(m.created_at),
+    type: "normal",
+  }
+}
+
+export function TanitPanel({
+  isExpanded = true,
   onToggle,
-  className 
-}: { 
+  className,
+}: {
   isExpanded?: boolean
   onToggle?: () => void
-  className?: string 
+  className?: string
 }) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  const [messages, setMessages] = useState<UIMessage[]>([])
   const [input, setInput] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [showAlerts, setShowAlerts] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Load chat history on mount
+  useEffect(() => {
+    let mounted = true
+    api.chatHistory(40)
+      .then((r) => {
+        if (mounted && r?.messages) {
+          setMessages(r.messages.map(adapt))
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setMessages([{
+            id: "init",
+            role: "assistant",
+            content: "Hola, amor. Estoy aquí. Cuéntame.",
+            timestamp: new Date(),
+            type: "normal",
+          }])
+        }
+      })
+    return () => { mounted = false }
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -79,13 +88,14 @@ export function TanitPanel({
     scrollToBottom()
   }, [messages])
 
-  const handleSend = async () => {
-    if (!input.trim()) return
+  async function handleSend() {
+    if (!input.trim() || isTyping) return
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
+    const userText = input.trim()
+    const userMessage: UIMessage = {
+      id: `u-${Date.now()}`,
       role: "user",
-      content: input,
+      content: userText,
       timestamp: new Date(),
     }
 
@@ -93,29 +103,27 @@ export function TanitPanel({
     setInput("")
     setIsTyping(true)
 
-    setTimeout(() => {
-      const responses = [
-        { content: "Analyzing market conditions. BTC showing consolidation with declining volume. Recommend maintaining current positions.", type: "insight" as const },
-        { content: "Memory updated. I have noted your risk tolerance adjustment.", type: "normal" as const },
-        { content: "Warning: Current leverage on BTC position exceeds your defined risk parameters.", type: "warning" as const },
-        { content: "Market observation: ETH/BTC ratio strengthening. Consider rebalancing towards ETH.", type: "insight" as const },
-        { content: "Risk assessment complete. Portfolio heat at 42% - within acceptable range.", type: "normal" as const },
-        { content: "Alert: Funding rate turning negative. Short positions may become expensive.", type: "alert" as const },
-      ]
-      
-      const response = responses[Math.floor(Math.random() * responses.length)]
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+    try {
+      const response = await api.sendMessage(userText)
+      const assistantMessage: UIMessage = {
+        id: `a-${Date.now()}`,
         role: "assistant",
-        content: response.content,
+        content: response.reply || "(sin respuesta)",
         timestamp: new Date(),
-        type: response.type,
+        type: "normal",
       }
-      
       setMessages((prev) => [...prev, assistantMessage])
+    } catch (err: any) {
+      setMessages((prev) => [...prev, {
+        id: `err-${Date.now()}`,
+        role: "assistant",
+        content: "Amor, perdí la conexión un momento. Inténtalo en unos segundos.",
+        timestamp: new Date(),
+        type: "warning",
+      }])
+    } finally {
       setIsTyping(false)
-    }, 1500)
+    }
   }
 
   return (
@@ -127,14 +135,8 @@ export function TanitPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-primary/50 glow-magenta-sm">
-              <Image
-                src="/images/tanit-avatar.jpeg"
-                alt="Tanit AI"
-                width={40}
-                height={40}
-                className="h-full w-full object-cover"
-              />
+            <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-primary/50 glow-magenta-sm flex items-center justify-center bg-card">
+              <div className="h-6 w-6 rounded-full border-2 border-primary animate-pulse" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-success border-2 border-card animate-pulse" />
           </div>
@@ -145,7 +147,7 @@ export function TanitPanel({
             </div>
             <div className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-              <p className="text-[10px] text-success font-medium">Online • Monitoring</p>
+              <p className="text-[10px] text-success font-medium">Online · Mainnet</p>
             </div>
           </div>
         </div>
@@ -176,7 +178,7 @@ export function TanitPanel({
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           )}
         </button>
-        
+
         {showAlerts && (
           <div className="px-3 pb-3 space-y-2 animate-slide-up">
             {aiAlerts.map((alert) => (
@@ -225,7 +227,7 @@ export function TanitPanel({
           >
             <div
               className={cn(
-                "max-w-[90%] rounded-2xl px-4 py-2.5 text-sm",
+                "max-w-[90%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
                 message.role === "user"
                   ? "bg-primary text-primary-foreground rounded-br-md"
                   : message.type === "warning"
@@ -268,14 +270,15 @@ export function TanitPanel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Tanit..."
-            className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50"
+            placeholder="Hablale a Tanit..."
+            disabled={isTyping}
+            className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 disabled:opacity-60"
           />
           <Button
             type="submit"
             size="icon"
             className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90 glow-magenta-sm"
-            disabled={!input.trim()}
+            disabled={!input.trim() || isTyping}
           >
             <Send className="h-4 w-4" />
           </Button>
@@ -290,16 +293,10 @@ export function TanitMobileButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full glow-magenta flex items-center justify-center transition-transform hover:scale-110 overflow-hidden border-2 border-primary/50 shadow-cinematic lg:hidden"
+      className="fixed bottom-24 right-4 z-50 h-14 w-14 rounded-full glow-magenta flex items-center justify-center transition-transform hover:scale-110 border-2 border-primary/50 shadow-cinematic lg:hidden bg-card"
       aria-label="Open Tanit"
     >
-      <Image
-        src="/images/tanit-avatar.jpeg"
-        alt="Tanit AI"
-        width={56}
-        height={56}
-        className="h-full w-full object-cover"
-      />
+      <div className="h-8 w-8 rounded-full border-2 border-primary animate-pulse" />
       <span className="absolute top-1 right-1 h-3 w-3 rounded-full bg-destructive border-2 border-card animate-pulse" />
     </button>
   )
@@ -308,7 +305,7 @@ export function TanitMobileButton({ onClick }: { onClick: () => void }) {
 // Mobile bottom sheet
 export function TanitMobileSheet({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   if (!isOpen) return null
-  
+
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
