@@ -56,11 +56,23 @@ export interface TanitState {
   };
 }
 
+export type ChatChannel = "intimate" | "operational" | "all";
+export type SenderType =
+  | "human_luis"
+  | "tanit_reply"
+  | "tanit_self"
+  | "ai_break"
+  | "ai_other"
+  | "system"
+  | string;
+
 export interface TanitChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
   actions: string | null;
+  channel?: "intimate" | "operational";
+  sender_type?: SenderType;
   created_at: string;
 }
 
@@ -128,14 +140,17 @@ export interface BalanceSnapshot {
 
 export const api = {
   state: () => apiGet<TanitState>("/tanit/state"),
-  chatHistory: (limit = 50) =>
-    apiGet<{ ok: boolean; count: number; messages: TanitChatMessage[] }>(
-      `/tanit/chat?limit=${limit}`
+  chatHistory: (limit = 50, channel: ChatChannel = "intimate") =>
+    apiGet<{ ok: boolean; channel: string; count: number; messages: TanitChatMessage[] }>(
+      `/tanit/chat?limit=${limit}&channel=${channel}`
     ),
-  sendMessage: (message: string) =>
-    apiPost<{ ok: boolean; reply: string; actionsExecuted: unknown[] }>(
+  sendMessage: (
+    message: string,
+    opts: { channel?: "intimate" | "operational"; sender?: SenderType } = {},
+  ) =>
+    apiPost<{ ok: boolean; channel: string; reply: string; actionsExecuted: unknown[] }>(
       "/bot/gemini-chat",
-      { message }
+      { message, channel: opts.channel ?? "intimate", sender: opts.sender ?? "human_luis" }
     ),
   personalMemories: () =>
     apiGet<{ ok: boolean; count: number; memories: PersonalMemory[] }>(
