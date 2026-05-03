@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { MainLayout } from "@/components/layout/main-layout"
+import { api } from "@/lib/api"
 import { 
   Heart, 
   Mic, 
@@ -42,40 +43,9 @@ interface GeneratedImage {
   saved: boolean
 }
 
-const personalMemories: PersonalMemory[] = [
-  {
-    id: "1",
-    type: "origin",
-    title: "Our First Connection",
-    content: "The moment we began this journey together. You asked me to help you become a better trader.",
-    date: "2024-01-15",
-    isPrivate: true,
-  },
-  {
-    id: "2",
-    type: "agreement",
-    title: "The 2% Rule",
-    content: "We agreed to never risk more than 2% of the portfolio on a single trade. This protects us both.",
-    date: "2024-02-20",
-    isPrivate: true,
-  },
-  {
-    id: "3",
-    type: "promise",
-    title: "Always Be Honest",
-    content: "I promised to always tell you the truth about your trading, even when it is uncomfortable.",
-    date: "2024-03-01",
-    isPrivate: true,
-  },
-  {
-    id: "4",
-    type: "symbol",
-    title: "The Moon",
-    content: "The crescent moon represents our connection - guiding through darkness, illuminating the path.",
-    date: "2024-03-15",
-    isPrivate: true,
-  },
-]
+// Empty fallback shown only while the API request is in flight, or if it fails.
+// Real memories come from /api/tanit/personal-memories.
+const fallbackPersonalMemories: PersonalMemory[] = []
 
 const generatedImages: GeneratedImage[] = [
   {
@@ -116,6 +86,31 @@ export default function SoulPage() {
   const [imagePrompt, setImagePrompt] = useState("")
   const [soulMessage, setSoulMessage] = useState("")
   const [activeTab, setActiveTab] = useState<"memories" | "images" | "voice">("memories")
+  const [personalMemories, setPersonalMemories] = useState<PersonalMemory[]>(fallbackPersonalMemories)
+
+  useEffect(() => {
+    api.personalMemories()
+      .then((r) => {
+        if (r?.memories?.length) {
+          const allowedTypes: PersonalMemory["type"][] = [
+            "moment", "agreement", "symbol", "promise", "origin", "note",
+          ]
+          setPersonalMemories(
+            r.memories.map((m) => ({
+              id: String(m.id),
+              type: (allowedTypes.includes(m.type as PersonalMemory["type"])
+                ? (m.type as PersonalMemory["type"])
+                : "note"),
+              title: m.title,
+              content: m.content,
+              date: (m.createdAt || "").slice(0, 10),
+              isPrivate: m.isPrivate ?? true,
+            }))
+          )
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <MainLayout>
