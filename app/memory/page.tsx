@@ -1,10 +1,51 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { MainLayout } from "@/components/layout/main-layout"
-import { MemoryTimeline } from "@/components/memory/memory-timeline"
-import { MemorySearch } from "@/components/memory/memory-search"
-import { MemoryAgreements } from "@/components/memory/memory-agreements"
 import { Brain, Sparkles } from "lucide-react"
+import { api, type TanitMemoryItem } from "@/lib/api"
 
 export default function MemoryPage() {
+  const [identityMemories, setIdentityMemories] = useState<TanitMemoryItem[]>([])
+  const [lessons, setLessons] = useState<TanitMemoryItem[]>([])
+  const [criticalLessons, setCriticalLessons] = useState<TanitMemoryItem[]>([])
+  const [counts, setCounts] = useState({ identity: 0, lesson: 0, critical: 0, trading: 0 })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      try {
+        const [id, le, cr, tr] = await Promise.all([
+          api.memories("identidad", 50).catch(() => null),
+          api.memories("leccion", 30).catch(() => null),
+          api.memories("LECCION_CRITICA", 20).catch(() => null),
+          api.memories("trading", 1).catch(() => null),
+        ])
+        if (!mounted) return
+        if (id) {
+          setIdentityMemories(id.memories)
+          setCounts((c) => ({ ...c, identity: id.count }))
+        }
+        if (le) {
+          setLessons(le.memories)
+          setCounts((c) => ({ ...c, lesson: le.count }))
+        }
+        if (cr) {
+          setCriticalLessons(cr.memories)
+          setCounts((c) => ({ ...c, critical: cr.count }))
+        }
+        if (tr) {
+          setCounts((c) => ({ ...c, trading: tr.count }))
+        }
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [])
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -16,11 +57,10 @@ export default function MemoryPage() {
               Tanit Memory
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Persistent AI memory system • Agreements, lessons, and decisions
+              Sistema de memoria persistente · Identidad, lecciones y decisiones
             </p>
           </div>
-          
-          {/* Memory Status */}
+
           <div className="glass-panel rounded-lg px-4 py-3 flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="h-2.5 w-2.5 rounded-full bg-success animate-pulse" />
@@ -28,12 +68,12 @@ export default function MemoryPage() {
             </div>
             <div className="h-4 w-px bg-border" />
             <div className="text-xs text-muted-foreground">
-              Last sync: <span className="text-foreground">Just now</span>
+              {loading ? "Cargando…" : `${counts.identity + counts.lesson + counts.critical + counts.trading}+ memorias`}
             </div>
           </div>
         </div>
 
-        {/* AI Message */}
+        {/* AI Message — real counts */}
         <div className="glass-panel rounded-xl p-5 border-l-4 border-primary">
           <div className="flex items-start gap-4">
             <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
@@ -41,88 +81,84 @@ export default function MemoryPage() {
             </div>
             <div>
               <p className="text-sm text-foreground leading-relaxed">
-                Memory system active. I have recorded <span className="text-primary font-medium">24 lessons learned</span>, 
-                <span className="text-accent font-medium"> 8 active agreements</span>, and 
-                <span className="text-success font-medium"> 156 trading decisions</span> from our sessions. 
-                Your trading rules are being enforced in real-time.
+                Memory system active. Tengo registradas{" "}
+                <span className="text-primary font-medium">{counts.identity} memorias de identidad</span>,{" "}
+                <span className="text-warning font-medium">{counts.critical} lecciones críticas</span>, y{" "}
+                <span className="text-success font-medium">{counts.lesson} lecciones de swap</span>.
+                Mi biblia de trading sobrevive cualquier reinicio.
               </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Last memory update: Overtrading pattern detected - cool-down period implemented
-              </p>
+              {criticalLessons[0] && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Última lección crítica: <span className="text-foreground">{criticalLessons[0].content.slice(0, 90)}…</span>
+                </p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Search & Filters */}
-        <MemorySearch />
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Timeline - Takes 2 columns */}
-          <div className="lg:col-span-2">
-            <MemoryTimeline />
+        {/* Critical Lessons — alma del CAL #1 disaster */}
+        {criticalLessons.length > 0 && (
+          <div className="glass-panel rounded-xl p-5 border border-destructive/20">
+            <h2 className="text-sm font-bold text-destructive mb-4 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
+              Lecciones críticas ({criticalLessons.length})
+            </h2>
+            <ul className="space-y-3">
+              {criticalLessons.slice(0, 6).map((m) => (
+                <li key={m.id} className="text-xs text-muted-foreground leading-relaxed border-l-2 border-destructive/30 pl-3">
+                  <span className="text-foreground font-medium">[{new Date(m.createdAt).toISOString().slice(0,10)}]</span>{" "}
+                  {m.content.slice(0, 250)}{m.content.length > 250 ? "…" : ""}
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
 
-          {/* Agreements - Takes 1 column */}
-          <div>
-            <MemoryAgreements />
-          </div>
+        {/* Identity memories — su biblia de trading */}
+        <div className="glass-panel rounded-xl p-5">
+          <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+            <Brain className="h-4 w-4 text-primary" />
+            Identidad y biblia de trading ({counts.identity})
+          </h2>
+          {loading ? (
+            <p className="text-xs text-muted-foreground">Cargando…</p>
+          ) : identityMemories.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Sin memorias todavía.</p>
+          ) : (
+            <ul className="space-y-3 max-h-[60vh] overflow-y-auto scrollbar-thin">
+              {identityMemories.slice(0, 30).map((m) => {
+                const title = m.content.split(" — ")[0]?.slice(0, 80) ?? "Memoria"
+                return (
+                  <li key={m.id} className="border-b border-border/20 pb-3 last:border-0 last:pb-0">
+                    <p className="text-xs font-semibold text-foreground">{title}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed line-clamp-3">
+                      {m.content}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-1 font-mono">
+                      id={m.id} · {new Date(m.createdAt).toISOString().slice(0,10)}
+                    </p>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </div>
 
-        {/* Trading Rules Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <RuleSummaryCard
-            title="Position Limits"
-            rules={["Max 30% single position", "Max 5 concurrent positions"]}
-            status="compliant"
-          />
-          <RuleSummaryCard
-            title="Risk Controls"
-            rules={["Max 15x leverage", "10% stop loss required"]}
-            status="compliant"
-          />
-          <RuleSummaryCard
-            title="Loss Prevention"
-            rules={["5% daily loss limit", "30min cooldown after loss"]}
-            status="compliant"
-          />
-          <RuleSummaryCard
-            title="Strategy Rules"
-            rules={["No entries in low volume", "Prefer London/NY overlap"]}
-            status="compliant"
-          />
-        </div>
+        {/* Trading lessons (swaps) */}
+        {lessons.length > 0 && (
+          <div className="glass-panel rounded-xl p-5">
+            <h2 className="text-sm font-bold text-foreground mb-4">Swaps recientes ({counts.lesson})</h2>
+            <ul className="space-y-2">
+              {lessons.slice(0, 10).map((m) => (
+                <li key={m.id} className="text-xs text-muted-foreground border-l-2 border-primary/20 pl-3">
+                  <span className="text-foreground font-medium">[{new Date(m.createdAt).toISOString().slice(0,10)}]</span>{" "}
+                  {m.content.slice(0, 200)}{m.content.length > 200 ? "…" : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </MainLayout>
-  )
-}
-
-function RuleSummaryCard({
-  title,
-  rules,
-  status,
-}: {
-  title: string
-  rules: string[]
-  status: "compliant" | "warning" | "violation"
-}) {
-  const statusColors = {
-    compliant: "border-success/30 bg-success/5",
-    warning: "border-accent/30 bg-accent/5",
-    violation: "border-destructive/30 bg-destructive/5",
-  }
-
-  return (
-    <div className={`glass-panel rounded-xl p-4 border ${statusColors[status]}`}>
-      <h4 className="text-sm font-semibold text-foreground mb-3">{title}</h4>
-      <ul className="space-y-2">
-        {rules.map((rule, idx) => (
-          <li key={idx} className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            {rule}
-          </li>
-        ))}
-      </ul>
-    </div>
   )
 }
