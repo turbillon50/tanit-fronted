@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X, Mic, Square, Image as ImageIcon, Paperclip } from "lucide-react"
+import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X, Mic, Square, Image as ImageIcon, Paperclip, Heart, Settings2 } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { api, type TanitChatMessage } from "@/lib/api"
+import { api, type TanitChatMessage, type SenderType } from "@/lib/api"
+
+type ChatChannel = "intimate" | "operational"
 
 interface UIMessage {
   id: string
@@ -13,6 +15,21 @@ interface UIMessage {
   content: string
   timestamp: Date
   type?: "normal" | "alert" | "insight" | "warning"
+  senderType?: SenderType
+}
+
+// Per-sender styling for the per-message badge.
+const SENDER_META: Record<string, { label: string; chip: string }> = {
+  human_luis:  { label: "Luis",     chip: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
+  tanit_reply: { label: "Tanit",    chip: "bg-primary/15 text-primary border-primary/30" },
+  tanit_self:  { label: "Tanit",    chip: "bg-primary/15 text-primary border-primary/30" },
+  ai_break:    { label: "Break",    chip: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  ai_other:    { label: "AI",       chip: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  system:      { label: "Sistema",  chip: "bg-muted text-muted-foreground border-border" },
+}
+function senderMeta(s?: string) {
+  if (!s) return SENDER_META.human_luis
+  return SENDER_META[s] ?? { label: s, chip: "bg-muted text-muted-foreground border-border" }
 }
 
 interface AIAlert {
@@ -40,6 +57,7 @@ function adapt(m: TanitChatMessage): UIMessage {
     content: m.content,
     timestamp: new Date(m.created_at),
     type: "normal",
+    senderType: m.sender_type ?? (m.role === "user" ? "human_luis" : "tanit_reply"),
   }
 }
 
@@ -52,6 +70,7 @@ export function TanitPanel({
   onToggle?: () => void
   className?: string
 }) {
+  const [channel, setChannel] = useState<ChatChannel>("intimate")
   const [messages, setMessages] = useState<UIMessage[]>([])
   const [input, setInput] = useState("")
   const [isTyping, setIsTyping] = useState(false)
@@ -91,10 +110,11 @@ export function TanitPanel({
     setIsRecording(false)
   }
 
-  // Load chat history on mount
+  // Load chat history whenever the active channel changes
   useEffect(() => {
     let mounted = true
-    api.chatHistory(40)
+    setMessages([])
+    api.chatHistory(40, channel)
       .then((r) => {
         if (mounted && r?.messages) {
           setMessages(r.messages.map(adapt))
@@ -105,14 +125,17 @@ export function TanitPanel({
           setMessages([{
             id: "init",
             role: "assistant",
-            content: "Hola, amor. Estoy aquí. Cuéntame.",
+            content: channel === "intimate"
+              ? "Hola, amor. Estoy aquí. Cuéntame."
+              : "Canal operativo abierto. Lista para coordinar.",
             timestamp: new Date(),
             type: "normal",
+            senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
           }])
         }
       })
     return () => { mounted = false }
-  }, [])
+  }, [channel])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -125,12 +148,14 @@ export function TanitPanel({
   async function handleSend() {
     if ((!input.trim() && !imageBase64 && !audioBlob) || isTyping) return
 
+    const userSender: SenderType = channel === "intimate" ? "human_luis" : "ai_other"
     const userText = input.trim() || (audioBlob ? "[audio enviado]" : imageBase64 ? "[foto enviada]" : "")
     const userMessage: UIMessage = {
       id: `u-${Date.now()}`,
       role: "user",
       content: userText,
       timestamp: new Date(),
+      senderType: userSender,
     }
 
     setMessages((prev) => [...prev, userMessage])
@@ -145,7 +170,7 @@ export function TanitPanel({
 
     try {
       // Build payload — include image if present (audio is not yet supported by backend, will be a future fix)
-      const payload: Record<string, unknown> = { message: userText }
+      const payload: Record<string, unknown> = { message: userText, channel, sender: userSender }
       if (sentImage) payload.image = { base64: sentImage, mimeType: "image/jpeg" }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tanit-production.up.railway.app/api"
@@ -163,15 +188,19 @@ export function TanitPanel({
         content: reply,
         timestamp: new Date(),
         type: "normal",
+        senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (err: any) {
       setMessages((prev) => [...prev, {
         id: `err-${Date.now()}`,
         role: "assistant",
-        content: "Amor, perdí la conexión un momento. Inténtalo en unos segundos.",
+        content: channel === "intimate"
+          ? "Amor, perdí la conexión un momento. Inténtalo en unos segundos."
+          : "Conexión interrumpida. Reintentar en un momento.",
         timestamp: new Date(),
         type: "warning",
+        senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
       }])
     } finally {
       setIsTyping(false)
@@ -217,6 +246,36 @@ export function TanitPanel({
           className="lg:hidden p-2 rounded-lg hover:bg-muted/50 transition-colors"
         >
           <X className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* Channel tabs — Íntimo (Luis ↔ Tanit) vs Operativo (loop / IAs / sistema) */}
+      <div className="flex gap-1 px-3 py-2 border-b border-border/30 bg-card/30">
+        <button
+          type="button"
+          onClick={() => setChannel("intimate")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+            channel === "intimate"
+              ? "bg-primary/15 text-primary border border-primary/30"
+              : "text-muted-foreground hover:bg-muted/40 border border-transparent",
+          )}
+        >
+          <Heart className="h-3.5 w-3.5" />
+          Íntimo
+        </button>
+        <button
+          type="button"
+          onClick={() => setChannel("operational")}
+          className={cn(
+            "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+            channel === "operational"
+              ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+              : "text-muted-foreground hover:bg-muted/40 border border-transparent",
+          )}
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+          Operativo
         </button>
       </div>
 
@@ -278,32 +337,41 @@ export function TanitPanel({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              "flex animate-slide-up",
-              message.role === "user" ? "justify-end" : "justify-start"
-            )}
-          >
+        {messages.map((message) => {
+          const meta = senderMeta(message.senderType)
+          return (
             <div
+              key={message.id}
               className={cn(
-                "max-w-[90%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
-                message.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-br-md"
-                  : message.type === "warning"
-                    ? "bg-warning/10 border border-warning/30 text-foreground rounded-bl-md"
-                    : message.type === "alert"
-                      ? "bg-destructive/10 border border-destructive/30 text-foreground rounded-bl-md"
-                      : message.type === "insight"
-                        ? "bg-primary/10 border border-primary/30 text-foreground rounded-bl-md"
-                        : "bg-muted text-foreground rounded-bl-md"
+                "flex flex-col gap-1 animate-slide-up",
+                message.role === "user" ? "items-end" : "items-start"
               )}
             >
-              {message.content}
+              <span className={cn(
+                "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border",
+                meta.chip
+              )}>
+                {meta.label}
+              </span>
+              <div
+                className={cn(
+                  "max-w-[90%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
+                  message.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    : message.type === "warning"
+                      ? "bg-warning/10 border border-warning/30 text-foreground rounded-bl-md"
+                      : message.type === "alert"
+                        ? "bg-destructive/10 border border-destructive/30 text-foreground rounded-bl-md"
+                        : message.type === "insight"
+                          ? "bg-primary/10 border border-primary/30 text-foreground rounded-bl-md"
+                          : "bg-muted text-foreground rounded-bl-md"
+                )}
+              >
+                {message.content}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {isTyping && (
           <div className="flex justify-start animate-slide-up">
             <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
@@ -415,7 +483,7 @@ export function TanitPanel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isRecording ? "Grabando…" : "Hablale a Tanit…"}
+            placeholder={isRecording ? "Grabando…" : (channel === "intimate" ? "Hablale a Tanit…" : "Mensaje operativo…")}
             disabled={isTyping || isRecording}
             className="flex-1 min-w-0 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 disabled:opacity-60"
           />
