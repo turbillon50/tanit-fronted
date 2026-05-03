@@ -59,7 +59,7 @@ export default function AnalyticsPage() {
     const min = Math.min(...allValues)
     const max = Math.max(...allValues)
     const range = max - min || 1
-    const fullSeries = [...snapshots, { id: -1, balance: String(lastBal), equity: null, available: null, note: null, created_at: new Date().toISOString() }]
+    const fullSeries = [...snapshots, { id: -1, balance: String(lastBal), equity: null, available: null, note: null, createdAt: new Date().toISOString() }]
     fullSeries.forEach((s, i) => {
       const x = (i / (fullSeries.length - 1 || 1)) * 100
       const y = 100 - ((parseFloat(s.balance) - min) / range) * 100
@@ -184,7 +184,17 @@ export default function AnalyticsPage() {
   )
 }
 
-/* ── Interactive Equity Curve with pinch-to-zoom & drag pan ─────────────── */
+/* ── Interactive Equity Curve — TIME-AXIS, pinch + pan + timeframe presets ─ */
+type Timeframe = "1H" | "6H" | "24H" | "7D" | "30D" | "ALL"
+const TIMEFRAME_MS: Record<Timeframe, number | null> = {
+  "1H":  60 * 60 * 1000,
+  "6H":  6 * 60 * 60 * 1000,
+  "24H": 24 * 60 * 60 * 1000,
+  "7D":  7 * 24 * 60 * 60 * 1000,
+  "30D": 30 * 24 * 60 * 60 * 1000,
+  "ALL": null,
+}
+
 function EquityCurveCard({
   snapshots,
   liveEquity,
@@ -199,32 +209,42 @@ function EquityCurveCard({
   totalReturn: number
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [zoom, setZoom] = useState(1)        // 1.0 = full view, >1 = zoomed in
-  const [panOffset, setPanOffset] = useState(0)  // 0..1, fraction from left
+  const [timeframe, setTimeframe] = useState<Timeframe>("ALL")
+  // Window in milliseconds — overridden by pinch zoom inside the timeframe.
+  const [windowMs, setWindowMs] = useState<number | null>(null)
+  // Pan: ms offset from "now" (0 = right edge is now; positive = window slides into past)
+  const [panMs, setPanMs] = useState(0)
+
   const pointerStateRef = useRef<{
     pointers: Map<number, { x: number; y: number }>
     initialDistance: number | null
-    initialZoom: number
+    initialWindowMs: number | null
     panStart: number | null
-    panInitialOffset: number
-  }>({ pointers: new Map(), initialDistance: null, initialZoom: 1, panStart: null, panInitialOffset: 0 })
+    panInitialMs: number
+  }>({ pointers: new Map(), initialDistance: null, initialWindowMs: null, panStart: null, panInitialMs: 0 })
 
+  // All points sorted by time, plus the current live equity at "now"
   const allPoints: { t: number; v: number }[] = []
   for (const s of snapshots) {
-    allPoints.push({ t: new Date(s.created_at).getTime(), v: parseFloat(s.balance) })
+    const t = new Date(s.createdAt).getTime()
+    if (!Number.isFinite(t)) continue
+    allPoints.push({ t, v: parseFloat(s.balance) })
   }
-  // Append live point if it differs
-  if (liveEquity > 0) {
-    allPoints.push({ t: Date.now(), v: liveEquity })
-  }
+  allPoints.sort((a, b) => a.t - b.t)
+  const now = Date.now()
+  if (liveEquity > 0) allPoints.push({ t: now, v: liveEquity })
 
-  // Apply zoom + pan (windowed view)
-  const total = allPoints.length
-  const visibleCount = Math.max(2, Math.round(total / Math.max(1, zoom)))
-  const startIdx = Math.max(0, Math.min(total - visibleCount, Math.round(panOffset * (total - visibleCount))))
-  const visible = allPoints.slice(startIdx, startIdx + visibleCount)
+  // Determine the time window
+  const presetMs = TIMEFRAME_MS[timeframe]
+  const effectiveWindowMs = windowMs
+    ?? presetMs
+    ?? (allPoints.length > 0 ? now - allPoints[0].t : 60_000)
 
-  // Build SVG path
+  const tEnd = now - panMs
+  const tStart = tEnd - effectiveWindowMs
+  const visible = allPoints.filter((p) => p.t >= tStart && p.t <= tEnd)
+
+  // Build SVG path against TIME on x-axis (so density honors real elapsed seconds)
   let path = ""
   let minV = 0, maxV = 0
   if (visible.length > 0) {
@@ -232,11 +252,17 @@ function EquityCurveCard({
     minV = Math.min(...values)
     maxV = Math.max(...values)
     const range = maxV - minV || 1
-    path = "M " + visible.map((p, i) => {
-      const x = (i / (visible.length - 1 || 1)) * 100
+    path = "M " + visible.map((p) => {
+      const x = ((p.t - tStart) / effectiveWindowMs) * 100
       const y = 100 - ((p.v - minV) / range) * 100
       return `${x.toFixed(2)} ${y.toFixed(2)}`
     }).join(" L ")
+  }
+
+  function setPreset(tf: Timeframe) {
+    setTimeframe(tf)
+    setWindowMs(null)
+    setPanMs(0)
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -246,10 +272,10 @@ function EquityCurveCard({
     if (s.pointers.size === 2) {
       const [a, b] = Array.from(s.pointers.values())
       s.initialDistance = Math.hypot(a.x - b.x, a.y - b.y)
-      s.initialZoom = zoom
+      s.initialWindowMs = effectiveWindowMs
     } else if (s.pointers.size === 1) {
       s.panStart = e.clientX
-      s.panInitialOffset = panOffset
+      s.panInitialMs = panMs
     }
   }
 
@@ -258,37 +284,54 @@ function EquityCurveCard({
     if (!s.pointers.has(e.pointerId)) return
     s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
-    if (s.pointers.size === 2 && s.initialDistance) {
+    if (s.pointers.size === 2 && s.initialDistance && s.initialWindowMs) {
       const [a, b] = Array.from(s.pointers.values())
       const dist = Math.hypot(a.x - b.x, a.y - b.y)
-      const newZoom = Math.max(1, Math.min(40, s.initialZoom * (dist / s.initialDistance)))
-      setZoom(newZoom)
+      // pinch out (dist grows) → window shrinks → zoom IN
+      const ratio = s.initialDistance / dist
+      const minWindow = 60_000  // 1 minute floor
+      const maxWindow = allPoints.length > 0 ? now - allPoints[0].t : 24 * 3600_000
+      const newWindow = Math.max(minWindow, Math.min(maxWindow, s.initialWindowMs * ratio))
+      setWindowMs(newWindow)
     } else if (s.pointers.size === 1 && s.panStart !== null && containerRef.current) {
       const w = containerRef.current.clientWidth
       const dx = e.clientX - s.panStart
-      const totalRange = total - visibleCount
-      if (totalRange > 0) {
-        const offsetDelta = -dx / w
-        setPanOffset(Math.max(0, Math.min(1, s.panInitialOffset + offsetDelta)))
-      }
+      // drag right → see older data (panMs increases)
+      const dms = -(dx / w) * effectiveWindowMs
+      setPanMs(Math.max(0, s.panInitialMs + dms))
     }
   }
 
   function onPointerEnd(e: React.PointerEvent<HTMLDivElement>) {
     const s = pointerStateRef.current
     s.pointers.delete(e.pointerId)
-    if (s.pointers.size < 2) s.initialDistance = null
+    if (s.pointers.size < 2) { s.initialDistance = null; s.initialWindowMs = null }
     if (s.pointers.size === 0) s.panStart = null
   }
 
+  function onWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault()
+    const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2
+    const minWindow = 60_000
+    const maxWindow = allPoints.length > 0 ? now - allPoints[0].t : 24 * 3600_000
+    setWindowMs(Math.max(minWindow, Math.min(maxWindow, effectiveWindowMs * factor)))
+  }
+
   function resetView() {
-    setZoom(1)
-    setPanOffset(0)
+    setWindowMs(null)
+    setPanMs(0)
+  }
+
+  function fmtWindow(ms: number): string {
+    if (ms < 90_000) return `${Math.round(ms / 1000)}s`
+    if (ms < 90 * 60_000) return `${Math.round(ms / 60_000)}min`
+    if (ms < 36 * 3600_000) return `${(ms / 3600_000).toFixed(1)}h`
+    return `${(ms / 86400_000).toFixed(1)}d`
   }
 
   return (
     <div className="glass-panel rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-primary" />
           Equity Curve
@@ -296,26 +339,33 @@ function EquityCurveCard({
             · {snapshots.length} snapshots · live
           </span>
         </h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setZoom((z) => Math.min(40, z * 1.5))}
-            className="px-2 py-1 rounded bg-muted/40 hover:bg-muted/60 text-xs"
-            aria-label="Zoom in"
-          >+</button>
-          <button
-            onClick={() => setZoom((z) => Math.max(1, z / 1.5))}
-            className="px-2 py-1 rounded bg-muted/40 hover:bg-muted/60 text-xs"
-            aria-label="Zoom out"
-          >−</button>
-          <button
-            onClick={resetView}
-            className="px-2 py-1 rounded bg-muted/40 hover:bg-muted/60 text-xs"
-            aria-label="Reset"
-          >⟲</button>
-        </div>
+        <button
+          onClick={resetView}
+          className="px-2 py-1 rounded bg-muted/40 hover:bg-muted/60 text-xs"
+          aria-label="Reset"
+          title="Reset view"
+        >⟲</button>
       </div>
 
-      {visible.length === 0 ? (
+      {/* Timeframe presets — separa la vista histórica de la minuto-a-minuto */}
+      <div className="flex gap-1 mb-3 overflow-x-auto">
+        {(Object.keys(TIMEFRAME_MS) as Timeframe[]).map((tf) => (
+          <button
+            key={tf}
+            onClick={() => setPreset(tf)}
+            className={
+              "px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex-shrink-0 " +
+              (timeframe === tf && windowMs === null
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted/40 text-muted-foreground hover:bg-muted/60")
+            }
+          >
+            {tf}
+          </button>
+        ))}
+      </div>
+
+      {allPoints.length === 0 ? (
         <p className="text-xs text-muted-foreground">Cargando snapshots…</p>
       ) : (
         <div
@@ -326,12 +376,19 @@ function EquityCurveCard({
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
           onPointerLeave={onPointerEnd}
+          onWheel={onWheel}
           style={{ touchAction: "none" }}
         >
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
-            <path d={path} fill="none" stroke="currentColor" strokeWidth="0.5" className="text-primary" />
-            <path d={path + " L 100 100 L 0 100 Z"} fill="currentColor" opacity="0.12" className="text-primary" />
-          </svg>
+          {visible.length >= 2 ? (
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+              <path d={path} fill="none" stroke="currentColor" strokeWidth="0.5" className="text-primary" />
+              <path d={path + " L 100 100 L 0 100 Z"} fill="currentColor" opacity="0.12" className="text-primary" />
+            </svg>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-[11px] text-muted-foreground">
+              Sin datos en esta ventana — prueba otro timeframe
+            </div>
+          )}
           <div className="absolute top-2 left-2 text-[10px] text-muted-foreground font-mono">
             ${maxV.toFixed(2)}
           </div>
@@ -339,7 +396,7 @@ function EquityCurveCard({
             ${minV.toFixed(2)}
           </div>
           <div className="absolute top-2 right-2 text-[10px] text-muted-foreground">
-            zoom {zoom.toFixed(1)}x
+            ventana {fmtWindow(effectiveWindowMs)} · {visible.length} pts
           </div>
         </div>
       )}
@@ -362,7 +419,7 @@ function EquityCurveCard({
       </div>
 
       <p className="text-[10px] text-muted-foreground/60 mt-2">
-        💡 Pellizca con dos dedos para hacer zoom · Arrastra para mover · Botón ⟲ para resetear
+        💡 Pellizca con dos dedos para zoom fino · Arrastra para mover en el tiempo · Botones de timeframe para saltar rápido · Rueda del mouse en escritorio
       </p>
     </div>
   )
