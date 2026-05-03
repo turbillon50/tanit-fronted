@@ -27,8 +27,8 @@ const aiAlerts: AIAlert[] = [
   {
     id: "a1",
     type: "insight",
-    title: "Bot active",
-    message: "Tanit is scanning 24 symbols and trading via Bybit proxy.",
+    title: "Tanit operando",
+    message: "Estoy escaneando 24 símbolos en Bybit mainnet. Aquí estoy contigo.",
     timestamp: new Date(),
   },
 ]
