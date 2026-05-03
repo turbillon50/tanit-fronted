@@ -55,9 +55,9 @@ function adapt(m: TanitChatMessage): UIMessage {
     id: String(m.id),
     role: m.role,
     content: m.content,
-    timestamp: new Date(m.created_at),
+    timestamp: new Date(m.createdAt),
     type: "normal",
-    senderType: m.sender_type ?? (m.role === "user" ? "human_luis" : "tanit_reply"),
+    senderType: m.senderType ?? (m.role === "user" ? "human_luis" : "tanit_reply"),
   }
 }
 
