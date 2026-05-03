@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X } from "lucide-react"
+import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X, Mic, Square, Image as ImageIcon, Paperclip } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { api, type TanitChatMessage } from "@/lib/api"
@@ -57,6 +57,39 @@ export function TanitPanel({
   const [isTyping, setIsTyping] = useState(false)
   const [showAlerts, setShowAlerts] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageBase64, setImageBase64] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      audioChunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      mr.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+        setAudioBlob(blob)
+        setAudioBlobUrl(URL.createObjectURL(blob))
+        stream.getTracks().forEach((t) => t.stop())
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setIsRecording(true)
+    } catch (err) {
+      alert("No pude acceder al micrófono. Revisa los permisos del navegador.")
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+    setIsRecording(false)
+  }
 
   // Load chat history on mount
   useEffect(() => {
@@ -90,9 +123,9 @@ export function TanitPanel({
   }, [messages])
 
   async function handleSend() {
-    if (!input.trim() || isTyping) return
+    if ((!input.trim() && !imageBase64 && !audioBlob) || isTyping) return
 
-    const userText = input.trim()
+    const userText = input.trim() || (audioBlob ? "[audio enviado]" : imageBase64 ? "[foto enviada]" : "")
     const userMessage: UIMessage = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -101,15 +134,33 @@ export function TanitPanel({
     }
 
     setMessages((prev) => [...prev, userMessage])
+    const sentImage = imageBase64
+    const sentImagePreview = imagePreview
     setInput("")
+    setImagePreview(null)
+    setImageBase64(null)
+    setAudioBlob(null)
+    setAudioBlobUrl(null)
     setIsTyping(true)
 
     try {
-      const response = await api.sendMessage(userText)
+      // Build payload — include image if present (audio is not yet supported by backend, will be a future fix)
+      const payload: Record<string, unknown> = { message: userText }
+      if (sentImage) payload.image = { base64: sentImage, mimeType: "image/jpeg" }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tanit-production.up.railway.app/api"
+      const res = await fetch(`${apiUrl}/bot/gemini-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json() as { reply?: string; error?: string }
+      const reply = data.reply || data.error || "(sin respuesta)"
+
       const assistantMessage: UIMessage = {
         id: `a-${Date.now()}`,
         role: "assistant",
-        content: response.reply || "(sin respuesta)",
+        content: reply,
         timestamp: new Date(),
         type: "normal",
       }
@@ -125,6 +176,9 @@ export function TanitPanel({
     } finally {
       setIsTyping(false)
     }
+
+    // Suppress unused warning for sentImagePreview (kept for future inline display)
+    void sentImagePreview
   }
 
   return (
@@ -264,28 +318,112 @@ export function TanitPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="p-3 border-t border-border/30 bg-card/30">
+      {/* Input — safe area inset for iOS PWA, +audio +photo buttons */}
+      <div
+        className="border-t border-border/30 bg-card/40 backdrop-blur"
+        style={{
+          paddingTop: "10px",
+          paddingLeft: "10px",
+          paddingRight: "10px",
+          paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+        }}
+      >
+        {/* Image preview if user attached one */}
+        {imagePreview && (
+          <div className="mb-2 flex items-center gap-2 bg-muted/30 rounded-lg p-2">
+            <img src={imagePreview} alt="" className="h-12 w-12 rounded-lg object-cover" />
+            <span className="text-xs text-muted-foreground flex-1 truncate">Foto adjunta</span>
+            <button
+              type="button"
+              onClick={() => { setImagePreview(null); setImageBase64(null); }}
+              className="p-1 rounded hover:bg-muted/50"
+              aria-label="Quitar foto"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </div>
+        )}
+
+        {/* Audio preview if recorded */}
+        {audioBlobUrl && (
+          <div className="mb-2 flex items-center gap-2 bg-muted/30 rounded-lg p-2">
+            <Mic className="h-4 w-4 text-primary" />
+            <audio src={audioBlobUrl} controls className="flex-1 h-8" />
+            <button
+              type="button"
+              onClick={() => { setAudioBlobUrl(null); setAudioBlob(null); }}
+              className="p-1 rounded hover:bg-muted/50"
+              aria-label="Quitar audio"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault()
             handleSend()
           }}
-          className="flex items-center gap-2"
+          className="flex items-end gap-2"
         >
+          {/* Photo attach button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (!f) return
+              const reader = new FileReader()
+              reader.onload = () => {
+                const result = String(reader.result || "")
+                setImagePreview(result)
+                setImageBase64(result.split(",")[1] || null)
+              }
+              reader.readAsDataURL(f)
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="h-11 w-11 rounded-xl bg-muted/40 hover:bg-muted/60 flex items-center justify-center text-muted-foreground transition-colors flex-shrink-0"
+            aria-label="Adjuntar foto"
+            disabled={isTyping}
+          >
+            <ImageIcon className="h-4 w-4" />
+          </button>
+
+          {/* Audio record button */}
+          <button
+            type="button"
+            onClick={isRecording ? stopRecording : startRecording}
+            className={cn(
+              "h-11 w-11 rounded-xl flex items-center justify-center transition-colors flex-shrink-0",
+              isRecording
+                ? "bg-destructive/20 text-destructive animate-pulse"
+                : "bg-muted/40 hover:bg-muted/60 text-muted-foreground"
+            )}
+            aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
+            disabled={isTyping}
+          >
+            {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </button>
+
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Hablale a Tanit..."
-            disabled={isTyping}
-            className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 disabled:opacity-60"
+            placeholder={isRecording ? "Grabando…" : "Hablale a Tanit…"}
+            disabled={isTyping || isRecording}
+            className="flex-1 min-w-0 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 disabled:opacity-60"
           />
           <Button
             type="submit"
             size="icon"
-            className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90 glow-magenta-sm"
-            disabled={!input.trim() || isTyping}
+            className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90 glow-magenta-sm flex-shrink-0"
+            disabled={(!input.trim() && !imageBase64 && !audioBlob) || isTyping || isRecording}
           >
             <Send className="h-4 w-4" />
           </Button>
