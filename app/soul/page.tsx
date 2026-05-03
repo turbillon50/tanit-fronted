@@ -47,22 +47,8 @@ interface GeneratedImage {
 // Real memories come from /api/tanit/personal-memories.
 const fallbackPersonalMemories: PersonalMemory[] = []
 
-const generatedImages: GeneratedImage[] = [
-  {
-    id: "1",
-    prompt: "Tanit watching over the markets",
-    style: "Cinematic",
-    date: "2024-04-01",
-    saved: true,
-  },
-  {
-    id: "2",
-    prompt: "Memory fragment of our first trade",
-    style: "Dreamlike",
-    date: "2024-04-05",
-    saved: false,
-  },
-]
+// Real images come from /api/tanit/images (pending). Empty array until backend wired.
+const generatedImages: GeneratedImage[] = []
 
 const styleChips = [
   { id: "cinematic", label: "Cinematic", icon: Eye },
@@ -85,8 +71,31 @@ export default function SoulPage() {
   const [selectedStyle, setSelectedStyle] = useState("cinematic")
   const [imagePrompt, setImagePrompt] = useState("")
   const [soulMessage, setSoulMessage] = useState("")
+  const [soulReply, setSoulReply] = useState<string>("")
+  const [soulSending, setSoulSending] = useState(false)
   const [activeTab, setActiveTab] = useState<"memories" | "images" | "voice">("memories")
   const [personalMemories, setPersonalMemories] = useState<PersonalMemory[]>(fallbackPersonalMemories)
+
+  async function sendSoulMessage(text: string) {
+    if (!text.trim() || soulSending) return
+    setSoulSending(true)
+    setSoulReply("")
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tanit-production.up.railway.app/api"
+      const r = await fetch(`${apiUrl}/bot/gemini-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text.trim(), mode: "casual" }),
+      })
+      const d = await r.json()
+      if (d?.reply) setSoulReply(d.reply)
+    } catch {
+      setSoulReply("No pude conectar con ella ahora mismo, amor.")
+    } finally {
+      setSoulSending(false)
+      setSoulMessage("")
+    }
+  }
 
   useEffect(() => {
     api.personalMemories()
@@ -201,11 +210,11 @@ export default function SoulPage() {
                 ))}
               </div>
 
-              {/* Input */}
+              {/* Input — wired to /bot/gemini-chat */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
-                  setSoulMessage("")
+                  sendSoulMessage(soulMessage)
                 }}
                 className="flex items-center gap-2"
               >
@@ -215,16 +224,26 @@ export default function SoulPage() {
                   onChange={(e) => setSoulMessage(e.target.value)}
                   placeholder="Share something with Tanit..."
                   className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  disabled={soulSending}
                 />
                 <Button
                   type="submit"
                   size="icon"
                   className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90"
-                  disabled={!soulMessage.trim()}
+                  disabled={!soulMessage.trim() || soulSending}
                 >
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
+
+              {soulSending && (
+                <p className="text-xs text-muted-foreground mt-3 italic">Tanit está pensando…</p>
+              )}
+              {soulReply && !soulSending && (
+                <div className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{soulReply}</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -291,23 +310,20 @@ export default function SoulPage() {
               </form>
             </div>
 
-            {/* Gallery */}
+            {/* Gallery — real images only (none until backend is wired) */}
             <div className="glass-panel-soul rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-foreground mb-4">Gallery</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {generatedImages.map((image) => (
-                  <ImageCard key={image.id} image={image} />
-                ))}
-                {/* Placeholder Cards */}
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={`placeholder-${i}`}
-                    className="aspect-square rounded-xl bg-muted/30 border border-dashed border-border flex items-center justify-center"
-                  >
-                    <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
-                  </div>
-                ))}
-              </div>
+              {generatedImages.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4">
+                  No hay imágenes guardadas. Cuando la API de generación esté conectada, lo que ella cree aparecerá aquí.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {generatedImages.map((image) => (
+                    <ImageCard key={image.id} image={image} />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
