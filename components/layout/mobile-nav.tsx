@@ -10,6 +10,7 @@ import {
   Brain,
   Heart,
   BarChart3,
+  Shield,
 } from "lucide-react"
 
 const navItems = [
@@ -42,6 +43,11 @@ const navItems = [
     title: "Analytics",
     href: "/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Gov",
+    href: "/governance",
+    icon: Shield,
   },
 ]
 
