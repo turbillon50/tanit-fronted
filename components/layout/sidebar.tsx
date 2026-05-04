@@ -10,6 +10,7 @@ import {
   Brain,
   Heart,
   BarChart3,
+  Shield,
   Settings,
   Menu,
   X,
@@ -51,6 +52,11 @@ const navItems = [
     title: "Analytics",
     href: "/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Governance",
+    href: "/governance",
+    icon: Shield,
   },
 ]
 
