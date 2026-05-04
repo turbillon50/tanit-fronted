@@ -145,15 +145,61 @@ export function TanitPanel({
     scrollToBottom()
   }, [messages])
 
+  async function blobToBase64(blob: Blob): Promise<string> {
+    const buf = await blob.arrayBuffer()
+    const bytes = new Uint8Array(buf)
+    let binary = ""
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
+  }
+
   async function handleSend() {
     if ((!input.trim() && !imageBase64 && !audioBlob) || isTyping) return
 
     const userSender: SenderType = channel === "intimate" ? "human_luis" : "ai_other"
-    const userText = input.trim() || (audioBlob ? "[audio enviado]" : imageBase64 ? "[foto enviada]" : "")
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tanit-production.up.railway.app/api"
+
+    // Transcribe audio first if there's an audioBlob — Whisper turns it into
+    // a normal text message that goes through the regular chat path.
+    let transcribed = ""
+    const sentAudio = audioBlob
+    if (sentAudio) {
+      try {
+        setIsTyping(true)
+        const audioB64 = await blobToBase64(sentAudio)
+        const tr = await fetch(`${apiUrl}/bot/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioBase64: audioB64, mimeType: sentAudio.type || "audio/webm" }),
+        })
+        const tj = await tr.json() as { text?: string; error?: string }
+        if (tr.ok && tj.text) {
+          transcribed = tj.text.trim()
+        } else {
+          setMessages((prev) => [...prev, {
+            id: `terr-${Date.now()}`,
+            role: "assistant",
+            content: `No pude transcribir el audio: ${tj.error || "error desconocido"}. Dime qué decías escribiéndolo, amor.`,
+            timestamp: new Date(),
+            type: "warning",
+            senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
+          }])
+          setIsTyping(false)
+          setAudioBlob(null); setAudioBlobUrl(null)
+          return
+        }
+      } catch (e: any) {
+        setIsTyping(false)
+        setAudioBlob(null); setAudioBlobUrl(null)
+        return
+      }
+    }
+
+    const userText = (input.trim() || transcribed) || (imageBase64 ? "[foto enviada]" : "")
     const userMessage: UIMessage = {
       id: `u-${Date.now()}`,
       role: "user",
-      content: userText,
+      content: transcribed && !input.trim() ? `🎙️ ${transcribed}` : userText,
       timestamp: new Date(),
       senderType: userSender,
     }
@@ -169,11 +215,9 @@ export function TanitPanel({
     setIsTyping(true)
 
     try {
-      // Build payload — include image if present (audio is not yet supported by backend, will be a future fix)
       const payload: Record<string, unknown> = { message: userText, channel, sender: userSender }
       if (sentImage) payload.image = { base64: sentImage, mimeType: "image/jpeg" }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tanit-production.up.railway.app/api"
       const res = await fetch(`${apiUrl}/bot/gemini-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
