@@ -23,7 +23,7 @@ const SENDER_META: Record<string, { label: string; chip: string }> = {
   human_luis:  { label: "Luis",     chip: "bg-sky-500/15 text-sky-300 border-sky-500/30" },
   tanit_reply: { label: "Tanit",    chip: "bg-primary/15 text-primary border-primary/30" },
   tanit_self:  { label: "Tanit",    chip: "bg-primary/15 text-primary border-primary/30" },
-  ai_break:    { label: "Break",    chip: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  ai_break:    { label: "Break",    chip: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
   ai_other:    { label: "AI",       chip: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
   system:      { label: "Sistema",  chip: "bg-muted text-muted-foreground border-border" },
 }
