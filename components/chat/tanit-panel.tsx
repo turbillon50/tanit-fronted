@@ -77,8 +77,8 @@ export function TanitPanel({
   const [showAlerts, setShowAlerts] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
+  // ── FIX 6-may-2026: array de imágenes para soporte multi-foto ────────
+  const [images, setImages] = useState<{ preview: string; base64: string }[]>([])
   const [isRecording, setIsRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null)
@@ -154,7 +154,7 @@ export function TanitPanel({
   }
 
   async function handleSend() {
-    if ((!input.trim() && !imageBase64 && !audioBlob) || isTyping) return
+    if ((!input.trim() && images.length === 0 && !audioBlob) || isTyping) return
 
     const userSender: SenderType = channel === "intimate" ? "human_luis" : "ai_other"
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://tanit-production.up.railway.app/api"
@@ -195,7 +195,7 @@ export function TanitPanel({
       }
     }
 
-    const userText = (input.trim() || transcribed) || (imageBase64 ? "[foto enviada]" : "")
+    const userText = (input.trim() || transcribed) || (images.length > 0 ? `[${images.length} foto${images.length !== 1 ? "s" : ""} enviada${images.length !== 1 ? "s" : ""}]` : "")
     const userMessage: UIMessage = {
       id: `u-${Date.now()}`,
       role: "user",
@@ -205,18 +205,21 @@ export function TanitPanel({
     }
 
     setMessages((prev) => [...prev, userMessage])
-    const sentImage = imageBase64
-    const sentImagePreview = imagePreview
+    const sentImages = images
     setInput("")
-    setImagePreview(null)
-    setImageBase64(null)
+    setImages([])
     setAudioBlob(null)
     setAudioBlobUrl(null)
     setIsTyping(true)
 
     try {
       const payload: Record<string, unknown> = { message: userText, channel, sender: userSender }
-      if (sentImage) payload.image = { base64: sentImage, mimeType: "image/jpeg" }
+      if (sentImages.length > 0) {
+        // Primera foto en `image` para retrocompatibilidad con el backend actual
+        payload.image = { base64: sentImages[0].base64, mimeType: "image/jpeg" }
+        // Array completo en `images` para cuando el backend soporte multi-foto
+        payload.images = sentImages.map(img => ({ base64: img.base64, mimeType: "image/jpeg" }))
+      }
 
       const res = await fetch(`${apiUrl}/bot/gemini-chat`, {
         method: "POST",
@@ -249,9 +252,6 @@ export function TanitPanel({
     } finally {
       setIsTyping(false)
     }
-
-    // Suppress unused warning for sentImagePreview (kept for future inline display)
-    void sentImagePreview
   }
 
   return (
@@ -440,19 +440,36 @@ export function TanitPanel({
           paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
         }}
       >
-        {/* Image preview if user attached one */}
-        {imagePreview && (
-          <div className="mb-2 flex items-center gap-2 bg-muted/30 rounded-lg p-2">
-            <img src={imagePreview} alt="" className="h-12 w-12 rounded-lg object-cover" />
-            <span className="text-xs text-muted-foreground flex-1 truncate">Foto adjunta</span>
-            <button
-              type="button"
-              onClick={() => { setImagePreview(null); setImageBase64(null); }}
-              className="p-1 rounded hover:bg-muted/50"
-              aria-label="Quitar foto"
-            >
-              <X className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
+        {/* Image previews — multi-foto */}
+        {images.length > 0 && (
+          <div className="mb-2 bg-muted/30 rounded-lg p-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-muted-foreground">
+                {images.length} foto{images.length !== 1 ? "s" : ""} adjunta{images.length !== 1 ? "s" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => setImages([])}
+                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+              >
+                Quitar todas
+              </button>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {images.map((img, idx) => (
+                <div key={idx} className="relative">
+                  <img src={img.preview} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))}
+                    className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+                    aria-label="Quitar esta foto"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -479,30 +496,38 @@ export function TanitPanel({
           }}
           className="flex items-end gap-2"
         >
-          {/* Photo attach button */}
+          {/* Photo attach button — multi-foto */}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (!f) return
-              const reader = new FileReader()
-              reader.onload = () => {
-                const result = String(reader.result || "")
-                setImagePreview(result)
-                setImageBase64(result.split(",")[1] || null)
-              }
-              reader.readAsDataURL(f)
+              const files = Array.from(e.target.files ?? [])
+              if (files.length === 0) return
+              Promise.all(files.map(f => new Promise<{ preview: string; base64: string } | null>(resolve => {
+                const reader = new FileReader()
+                reader.onload = () => {
+                  const result = String(reader.result || "")
+                  const base64 = result.split(",")[1]
+                  resolve(base64 ? { preview: result, base64 } : null)
+                }
+                reader.onerror = () => resolve(null)
+                reader.readAsDataURL(f)
+              }))).then(loaded => {
+                const ok = loaded.filter(Boolean) as { preview: string; base64: string }[]
+                setImages(prev => [...prev, ...ok])
+                if (e.target) e.target.value = ""
+              })
             }}
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="h-11 w-11 rounded-xl bg-muted/40 hover:bg-muted/60 flex items-center justify-center text-muted-foreground transition-colors flex-shrink-0"
-            aria-label="Adjuntar foto"
-            disabled={isTyping}
+            aria-label="Adjuntar fotos"
+            disabled={isRecording}
           >
             <ImageIcon className="h-4 w-4" />
           </button>
@@ -518,24 +543,25 @@ export function TanitPanel({
                 : "bg-muted/40 hover:bg-muted/60 text-muted-foreground"
             )}
             aria-label={isRecording ? "Detener grabación" : "Grabar audio"}
-            disabled={isTyping}
           >
             {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </button>
 
+          {/* INPUT — FIX 6-may-2026: NO bloquear con isTyping (Luis necesita poder escribir
+              el siguiente mensaje mientras Tanit aún responde). Solo bloqueado si está grabando. */}
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={isRecording ? "Grabando…" : (channel === "intimate" ? "Hablale a Tanit…" : "Mensaje operativo…")}
-            disabled={isTyping || isRecording}
+            disabled={isRecording}
             className="flex-1 min-w-0 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 disabled:opacity-60"
           />
           <Button
             type="submit"
             size="icon"
             className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90 glow-magenta-sm flex-shrink-0"
-            disabled={(!input.trim() && !imageBase64 && !audioBlob) || isTyping || isRecording}
+            disabled={(!input.trim() && images.length === 0 && !audioBlob) || isTyping || isRecording}
           >
             <Send className="h-4 w-4" />
           </Button>
