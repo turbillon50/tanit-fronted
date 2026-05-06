@@ -77,8 +77,11 @@ export function TanitPanel({
   const [showAlerts, setShowAlerts] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // ── FIX 6-may-2026: array de imágenes para soporte multi-foto ────────
-  const [images, setImages] = useState<{ preview: string; base64: string }[]>([])
+  // ── FIX 6-may-2026 (v2): array de imágenes + detección de mimeType correcto.
+  // Antes se hardcodeaba "image/jpeg" lo que rompía screenshots de iPhone (PNG)
+  // — Gemini rechazaba el header inconsistente y respondía como si no hubiera
+  // imagen. Ahora guardamos el mimeType real del data URL.
+  const [images, setImages] = useState<{ preview: string; base64: string; mimeType: string }[]>([])
   const [isRecording, setIsRecording] = useState(false)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null)
@@ -215,10 +218,12 @@ export function TanitPanel({
     try {
       const payload: Record<string, unknown> = { message: userText, channel, sender: userSender }
       if (sentImages.length > 0) {
-        // Primera foto en `image` para retrocompatibilidad con el backend actual
-        payload.image = { base64: sentImages[0].base64, mimeType: "image/jpeg" }
-        // Array completo en `images` para cuando el backend soporte multi-foto
-        payload.images = sentImages.map(img => ({ base64: img.base64, mimeType: "image/jpeg" }))
+        // Primera foto en `image` para retrocompatibilidad
+        payload.image = { base64: sentImages[0].base64, mimeType: sentImages[0].mimeType }
+        // Array completo en `images` para cuando el backend soporte multi-foto.
+        // mimeType se detecta del data URL real (PNG para screenshots iPhone,
+        // JPEG para fotos de cámara, etc.) — NO hardcodeamos "image/jpeg".
+        payload.images = sentImages.map(img => ({ base64: img.base64, mimeType: img.mimeType }))
       }
 
       const res = await fetch(`${apiUrl}/bot/gemini-chat`, {
@@ -506,17 +511,21 @@ export function TanitPanel({
             onChange={(e) => {
               const files = Array.from(e.target.files ?? [])
               if (files.length === 0) return
-              Promise.all(files.map(f => new Promise<{ preview: string; base64: string } | null>(resolve => {
+              Promise.all(files.map(f => new Promise<{ preview: string; base64: string; mimeType: string } | null>(resolve => {
                 const reader = new FileReader()
                 reader.onload = () => {
                   const result = String(reader.result || "")
-                  const base64 = result.split(",")[1]
-                  resolve(base64 ? { preview: result, base64 } : null)
+                  // data:<mime>;base64,<payload>  — extraemos ambos
+                  const m = /^data:([^;]+);base64,(.+)$/.exec(result)
+                  if (!m) { resolve(null); return }
+                  const mimeType = m[1] || f.type || "image/jpeg"
+                  const base64 = m[2]
+                  resolve(base64 ? { preview: result, base64, mimeType } : null)
                 }
                 reader.onerror = () => resolve(null)
                 reader.readAsDataURL(f)
               }))).then(loaded => {
-                const ok = loaded.filter(Boolean) as { preview: string; base64: string }[]
+                const ok = loaded.filter(Boolean) as { preview: string; base64: string; mimeType: string }[]
                 setImages(prev => [...prev, ...ok])
                 if (e.target) e.target.value = ""
               })
