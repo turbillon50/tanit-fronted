@@ -14,15 +14,19 @@ import {
   Settings,
   Menu,
   X,
-  Sun,
-  Moon,
+  MessageCircle,
 } from "lucide-react"
 import { useState } from "react"
 import Image from "next/image"
-import { useTheme } from "@/components/providers/theme-provider"
 import { SettingsDrawer } from "@/components/settings/settings-drawer"
 
 const navItems = [
+  {
+    title: "Hablar con Tanit",
+    href: "/chat",
+    icon: MessageCircle,
+    primary: true,
+  },
   {
     title: "Command Center",
     href: "/",
@@ -39,6 +43,11 @@ const navItems = [
     icon: ShieldAlert,
   },
   {
+    title: "Analytics",
+    href: "/analytics",
+    icon: BarChart3,
+  },
+  {
     title: "Tanit Memory",
     href: "/memory",
     icon: Brain,
@@ -47,11 +56,6 @@ const navItems = [
     title: "Tanit Soul",
     href: "/soul",
     icon: Heart,
-  },
-  {
-    title: "Analytics",
-    href: "/analytics",
-    icon: BarChart3,
   },
   {
     title: "Governance",
@@ -64,11 +68,6 @@ export function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const { resolvedTheme, setTheme } = useTheme()
-
-  const toggleTheme = () => {
-    setTheme(resolvedTheme === "dark" ? "light" : "dark")
-  }
 
   return (
     <>
@@ -79,19 +78,6 @@ export function Sidebar() {
         aria-label="Open menu"
       >
         <Menu className="h-6 w-6 text-foreground" />
-      </button>
-
-      {/* Mobile Theme Toggle */}
-      <button
-        onClick={toggleTheme}
-        className="fixed top-4 right-4 z-50 lg:hidden glass-panel p-2 rounded-lg"
-        aria-label="Toggle theme"
-      >
-        {resolvedTheme === "dark" ? (
-          <Sun className="h-5 w-5 text-foreground" />
-        ) : (
-          <Moon className="h-5 w-5 text-foreground" />
-        )}
       </button>
 
       {/* Mobile Overlay */}
@@ -139,28 +125,39 @@ export function Sidebar() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
             {navItems.map((item) => {
               const isActive = pathname === item.href
-              const isSoulPage = item.href === "/soul"
+              const isPrimary = "primary" in item && item.primary
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
-                    isActive
-                      ? "bg-primary/10 text-primary glow-magenta-sm"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
+                    isPrimary
+                      ? isActive
+                        ? "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/40 shadow-[0_0_24px_-8px_rgb(245,158,11,0.5)]"
+                        : "bg-zinc-900/60 text-amber-200 hover:bg-amber-500/10 hover:ring-1 hover:ring-amber-500/30"
+                      : isActive
+                        ? "bg-zinc-800/80 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
                   )}
                 >
-                  <item.icon className={cn(
-                    "h-5 w-5", 
-                    isActive && "text-primary",
-                    isSoulPage && isActive && "fill-primary/30"
-                  )} />
-                  <span className="text-sm font-medium">{item.title}</span>
+                  <item.icon
+                    className={cn(
+                      "h-5 w-5 flex-shrink-0",
+                      isPrimary && (isActive ? "text-amber-300" : "text-amber-400 group-hover:text-amber-300"),
+                      !isPrimary && isActive && "text-zinc-100",
+                    )}
+                  />
+                  <span className={cn("text-sm", isPrimary ? "font-bold tracking-wide" : "font-medium")}>
+                    {item.title}
+                  </span>
+                  {isPrimary && (
+                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
                 </Link>
               )
             })}
@@ -187,20 +184,9 @@ export function Sidebar() {
             </div>
           </div>
 
-          {/* Theme Toggle & Settings */}
-          <div className="p-4 border-t border-sidebar-border space-y-2">
-            <button 
-              onClick={toggleTheme}
-              className="flex items-center gap-3 px-4 py-2 w-full text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-sidebar-accent"
-            >
-              {resolvedTheme === "dark" ? (
-                <Sun className="h-5 w-5" />
-              ) : (
-                <Moon className="h-5 w-5" />
-              )}
-              <span className="text-sm">{resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-            </button>
-            <button 
+          {/* Settings */}
+          <div className="p-4 border-t border-sidebar-border">
+            <button
               onClick={() => setSettingsOpen(true)}
               className="flex items-center gap-3 px-4 py-2 w-full text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-sidebar-accent"
             >
