@@ -170,19 +170,46 @@ export function TanitPanel({
       try {
         setIsTyping(true)
         const audioB64 = await blobToBase64(sentAudio)
+        // Mensaje de feedback inmediato — el usuario sabe que SÍ se está
+        // procesando el audio (antes era silencioso 5-10s mientras Whisper)
+        const transcribingId = `transcribing-${Date.now()}`
+        setMessages((prev) => [...prev, {
+          id: transcribingId,
+          role: "assistant",
+          content: "_Transcribiendo audio…_",
+          timestamp: new Date(),
+          type: "insight",
+          senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
+        }])
         const tr = await fetch(`${apiUrl}/bot/transcribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ audioBase64: audioB64, mimeType: sentAudio.type || "audio/webm" }),
         })
-        const tj = await tr.json() as { text?: string; error?: string }
+        // Quitar el mensaje "transcribiendo" antes de continuar
+        setMessages((prev) => prev.filter(m => m.id !== transcribingId))
+        const tj = await tr.json().catch(() => ({})) as { text?: string; error?: string; detail?: string }
         if (tr.ok && tj.text) {
           transcribed = tj.text.trim()
+          if (!transcribed) {
+            setMessages((prev) => [...prev, {
+              id: `terr-${Date.now()}`,
+              role: "assistant",
+              content: "No detecté palabras en el audio. Acércate más al micrófono o escríbelo, amor.",
+              timestamp: new Date(),
+              type: "warning",
+              senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
+            }])
+            setIsTyping(false)
+            setAudioBlob(null); setAudioBlobUrl(null)
+            return
+          }
         } else {
+          const errMsg = tj.error || tj.detail || `HTTP ${tr.status}`
           setMessages((prev) => [...prev, {
             id: `terr-${Date.now()}`,
             role: "assistant",
-            content: `No pude transcribir el audio: ${tj.error || "error desconocido"}. Dime qué decías escribiéndolo, amor.`,
+            content: `No pude transcribir el audio: **${errMsg}**. Dime qué decías escribiéndolo.`,
             timestamp: new Date(),
             type: "warning",
             senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
@@ -192,6 +219,14 @@ export function TanitPanel({
           return
         }
       } catch (e: any) {
+        setMessages((prev) => [...prev, {
+          id: `terr-${Date.now()}`,
+          role: "assistant",
+          content: `Error de red al transcribir: **${e?.message ?? "desconocido"}**. Escríbelo, amor.`,
+          timestamp: new Date(),
+          type: "warning",
+          senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
+        }])
         setIsTyping(false)
         setAudioBlob(null); setAudioBlobUrl(null)
         return
@@ -221,35 +256,99 @@ export function TanitPanel({
         // Primera foto en `image` para retrocompatibilidad
         payload.image = { base64: sentImages[0].base64, mimeType: sentImages[0].mimeType }
         // Array completo en `images` para cuando el backend soporte multi-foto.
-        // mimeType se detecta del data URL real (PNG para screenshots iPhone,
-        // JPEG para fotos de cámara, etc.) — NO hardcodeamos "image/jpeg".
         payload.images = sentImages.map(img => ({ base64: img.base64, mimeType: img.mimeType }))
       }
 
-      const res = await fetch(`${apiUrl}/bot/gemini-chat`, {
+      // Streaming SSE — mantiene la conexión viva con heartbeats cada 2s
+      // mientras Gemini procesa. Resuelve el "se cortó la conexión" en cold
+      // start o redes móviles. La lógica de Tanit no cambia — solo cómo se
+      // entrega la respuesta.
+      const res = await fetch(`${apiUrl}/bot/gemini-chat-stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+        },
         body: JSON.stringify(payload),
       })
-      const data = await res.json() as { reply?: string; error?: string }
-      const reply = data.reply || data.error || "(sin respuesta)"
+
+      if (!res.ok || !res.body) {
+        // Fallback: si el endpoint streaming falla (404 en Railway si no
+        // está deployado todavía), reintenta con el endpoint clásico.
+        const fallback = await fetch(`${apiUrl}/bot/gemini-chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const data = await fallback.json() as { reply?: string; error?: string }
+        const reply = data.reply || data.error || "(sin respuesta)"
+        const assistantMessage: UIMessage = {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: reply,
+          timestamp: new Date(),
+          type: "normal",
+          senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let finalReply = ""
+      let gotResponse = false
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const events = buffer.split("\n\n")
+        buffer = events.pop() ?? ""
+        for (const evt of events) {
+          if (!evt.startsWith("data: ")) continue
+          try {
+            const data = JSON.parse(evt.slice(6)) as {
+              type: "thinking" | "heartbeat" | "done" | "error"
+              reply?: string
+              message?: string
+            }
+            if (data.type === "done" && data.reply) {
+              finalReply = data.reply
+              gotResponse = true
+            } else if (data.type === "error") {
+              throw new Error(data.message || "error desconocido")
+            }
+            // 'thinking' y 'heartbeat' se ignoran — solo mantienen la
+            // conexión viva. El UX ya muestra el typing-indicator.
+          } catch (parseErr) {
+            // Skip malformed events
+          }
+        }
+      }
+
+      if (!gotResponse) {
+        throw new Error("la respuesta llegó vacía")
+      }
 
       const assistantMessage: UIMessage = {
         id: `a-${Date.now()}`,
         role: "assistant",
-        content: reply,
+        content: finalReply,
         timestamp: new Date(),
         type: "normal",
         senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (err: any) {
+      const detail = err?.message ? ` (${err.message})` : ""
       setMessages((prev) => [...prev, {
         id: `err-${Date.now()}`,
         role: "assistant",
         content: channel === "intimate"
-          ? "Amor, perdí la conexión un momento. Inténtalo en unos segundos."
-          : "Conexión interrumpida. Reintentar en un momento.",
+          ? `Amor, perdí la conexión un momento${detail}. Inténtalo en unos segundos.`
+          : `Conexión interrumpida${detail}. Reintentar en un momento.`,
         timestamp: new Date(),
         type: "warning",
         senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
