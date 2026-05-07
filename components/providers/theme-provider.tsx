@@ -1,59 +1,29 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect } from "react"
 
-type Theme = "dark" | "light" | "system"
+// TANIT vive solo en dark. La paleta black/chrome/gold pierde su identidad
+// en modo claro, así que removimos la opción light. Mantenemos el provider
+// para no romper imports existentes — pero `theme` siempre es "dark".
 
 interface ThemeContextType {
-  theme: Theme
-  resolvedTheme: "dark" | "light"
-  setTheme: (theme: Theme) => void
+  theme: "dark"
+  resolvedTheme: "dark"
+  setTheme: (_: "dark" | "light" | "system") => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark")
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark")
-
-  useEffect(() => {
-    const stored = localStorage.getItem("vtanit-theme") as Theme | null
-    if (stored) {
-      setTheme(stored)
-    }
-  }, [])
-
   useEffect(() => {
     const root = window.document.documentElement
+    root.classList.remove("light")
+    root.classList.add("dark")
+  }, [])
 
-    const applyTheme = (newTheme: "dark" | "light") => {
-      root.classList.remove("light", "dark")
-      root.classList.add(newTheme)
-      setResolvedTheme(newTheme)
-    }
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-      applyTheme(systemTheme)
-
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-      const handleChange = (e: MediaQueryListEvent) => {
-        applyTheme(e.matches ? "dark" : "light")
-      }
-      mediaQuery.addEventListener("change", handleChange)
-      return () => mediaQuery.removeEventListener("change", handleChange)
-    } else {
-      applyTheme(theme)
-    }
-  }, [theme])
-
-  const handleSetTheme = (newTheme: Theme) => {
-    setTheme(newTheme)
-    localStorage.setItem("vtanit-theme", newTheme)
-  }
-
+  // setTheme es no-op a propósito — la app no permite light.
   return (
-    <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme: handleSetTheme }}>
+    <ThemeContext.Provider value={{ theme: "dark", resolvedTheme: "dark", setTheme: () => {} }}>
       {children}
     </ThemeContext.Provider>
   )

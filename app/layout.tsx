@@ -40,7 +40,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#ff4fb8',
+  // Black trading-station — gold halo se aplica via UI components
+  themeColor: '#0a0a0c',
 }
 
 export default function RootLayout({

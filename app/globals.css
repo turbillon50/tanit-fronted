@@ -4,144 +4,108 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* V•Tanit Premium Dark Theme */
-  --background: oklch(0.02 0 0);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.06 0.005 280);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.06 0.005 280);
-  --popover-foreground: oklch(0.95 0 0);
-  
-  /* Primary: Neon Magenta */
-  --primary: oklch(0.7 0.25 330);
-  --primary-foreground: oklch(0 0 0);
-  
-  /* Secondary: Chrome/Metallic Silver */
-  --secondary: oklch(0.75 0.01 250);
-  --secondary-foreground: oklch(0.1 0 0);
-  
-  /* Muted: Dark grays */
-  --muted: oklch(0.12 0.005 280);
-  --muted-foreground: oklch(0.55 0 0);
-  
-  /* Accent: Subtle Gold */
-  --accent: oklch(0.75 0.12 85);
-  --accent-foreground: oklch(0.1 0 0);
-  
-  /* Destructive: Red for negative/danger */
-  --destructive: oklch(0.6 0.28 25);
-  --destructive-foreground: oklch(0.95 0 0);
-  
-  /* Success: Green for positive */
-  --success: oklch(0.65 0.22 145);
-  --success-foreground: oklch(0 0 0);
-  
-  /* Warning: Orange */
-  --warning: oklch(0.7 0.18 60);
-  --warning-foreground: oklch(0 0 0);
-  
-  --border: oklch(0.18 0.01 280);
-  --input: oklch(0.1 0.005 280);
-  --ring: oklch(0.7 0.25 330);
-  
-  /* Chart colors */
-  --chart-1: oklch(0.7 0.25 330);
-  --chart-2: oklch(0.65 0.22 145);
-  --chart-3: oklch(0.75 0.01 250);
-  --chart-4: oklch(0.75 0.12 85);
-  --chart-5: oklch(0.6 0.28 25);
-  
-  --radius: 0.75rem;
-  
-  /* Sidebar */
-  --sidebar: oklch(0.04 0.005 280);
+  /* TANIT — Black · Chrome · Gold (premium trading station) */
+  --background: oklch(0.04 0 0);            /* near-black */
+  --foreground: oklch(0.96 0 0);            /* chrome-white */
+  --card: oklch(0.08 0 0);                  /* graphite */
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.08 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+
+  /* Primary: Chrome Silver — bold UI elements, CTAs */
+  --primary: oklch(0.88 0.005 250);
+  --primary-foreground: oklch(0.04 0 0);
+
+  /* Secondary: Soft chrome */
+  --secondary: oklch(0.18 0 0);
+  --secondary-foreground: oklch(0.92 0 0);
+
+  /* Muted */
+  --muted: oklch(0.10 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+
+  /* Accent: Gold/Amber halo (signature de la marca V0 Trading) */
+  --accent: oklch(0.78 0.16 75);            /* #f59e0b vibe */
+  --accent-foreground: oklch(0.04 0 0);
+
+  /* Destructive: deep red with bite */
+  --destructive: oklch(0.62 0.27 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  /* Success: emerald sutil (no neon) */
+  --success: oklch(0.66 0.18 150);
+  --success-foreground: oklch(0.04 0 0);
+
+  /* Warning: amber */
+  --warning: oklch(0.78 0.16 70);
+  --warning-foreground: oklch(0.04 0 0);
+
+  --border: oklch(0.16 0 0);
+  --input: oklch(0.10 0 0);
+  --ring: oklch(0.78 0.16 75);              /* gold focus ring */
+
+  /* Chart palette — chrome + gold + green/red for P&L */
+  --chart-1: oklch(0.78 0.16 75);           /* gold (primary line) */
+  --chart-2: oklch(0.66 0.18 150);          /* green (profit) */
+  --chart-3: oklch(0.88 0.005 250);         /* chrome (neutral) */
+  --chart-4: oklch(0.62 0.27 25);           /* red (loss) */
+  --chart-5: oklch(0.55 0.05 280);          /* lavender muted */
+
+  --sidebar: oklch(0.05 0 0);
   --sidebar-foreground: oklch(0.85 0 0);
-  --sidebar-primary: oklch(0.7 0.25 330);
-  --sidebar-primary-foreground: oklch(0 0 0);
-  --sidebar-accent: oklch(0.1 0.005 280);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: oklch(0.12 0.01 280);
-  --sidebar-ring: oklch(0.7 0.25 330);
+  --sidebar-primary: oklch(0.78 0.16 75);
+  --sidebar-primary-foreground: oklch(0.04 0 0);
+  --sidebar-accent: oklch(0.10 0 0);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(0.14 0 0);
+  --sidebar-ring: oklch(0.78 0.16 75);
+
+  --radius: 0.625rem;
 }
 
 .dark {
-  --background: oklch(0.02 0 0);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.06 0.005 280);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.06 0.005 280);
-  --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.7 0.25 330);
-  --primary-foreground: oklch(0 0 0);
-  --secondary: oklch(0.75 0.01 250);
-  --secondary-foreground: oklch(0.1 0 0);
-  --muted: oklch(0.12 0.005 280);
-  --muted-foreground: oklch(0.55 0 0);
-  --accent: oklch(0.75 0.12 85);
-  --accent-foreground: oklch(0.1 0 0);
-  --destructive: oklch(0.6 0.28 25);
-  --destructive-foreground: oklch(0.95 0 0);
-  --success: oklch(0.65 0.22 145);
-  --success-foreground: oklch(0 0 0);
-  --warning: oklch(0.7 0.18 60);
-  --warning-foreground: oklch(0 0 0);
-  --border: oklch(0.18 0.01 280);
-  --input: oklch(0.1 0.005 280);
-  --ring: oklch(0.7 0.25 330);
-  --chart-1: oklch(0.7 0.25 330);
-  --chart-2: oklch(0.65 0.22 145);
-  --chart-3: oklch(0.75 0.01 250);
-  --chart-4: oklch(0.75 0.12 85);
-  --chart-5: oklch(0.6 0.28 25);
-  --sidebar: oklch(0.04 0.005 280);
+  /* same as :root — single canonical theme, dark forever */
+  --background: oklch(0.04 0 0);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.08 0 0);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.08 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+  --primary: oklch(0.88 0.005 250);
+  --primary-foreground: oklch(0.04 0 0);
+  --secondary: oklch(0.18 0 0);
+  --secondary-foreground: oklch(0.92 0 0);
+  --muted: oklch(0.10 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+  --accent: oklch(0.78 0.16 75);
+  --accent-foreground: oklch(0.04 0 0);
+  --destructive: oklch(0.62 0.27 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.66 0.18 150);
+  --success-foreground: oklch(0.04 0 0);
+  --warning: oklch(0.78 0.16 70);
+  --warning-foreground: oklch(0.04 0 0);
+  --border: oklch(0.16 0 0);
+  --input: oklch(0.10 0 0);
+  --ring: oklch(0.78 0.16 75);
+  --chart-1: oklch(0.78 0.16 75);
+  --chart-2: oklch(0.66 0.18 150);
+  --chart-3: oklch(0.88 0.005 250);
+  --chart-4: oklch(0.62 0.27 25);
+  --chart-5: oklch(0.55 0.05 280);
+  --sidebar: oklch(0.05 0 0);
   --sidebar-foreground: oklch(0.85 0 0);
-  --sidebar-primary: oklch(0.7 0.25 330);
-  --sidebar-primary-foreground: oklch(0 0 0);
-  --sidebar-accent: oklch(0.1 0.005 280);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: oklch(0.12 0.01 280);
-  --sidebar-ring: oklch(0.7 0.25 330);
+  --sidebar-primary: oklch(0.78 0.16 75);
+  --sidebar-primary-foreground: oklch(0.04 0 0);
+  --sidebar-accent: oklch(0.10 0 0);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(0.14 0 0);
+  --sidebar-ring: oklch(0.78 0.16 75);
 }
 
-/* V•Tanit Premium Light Mode */
-.light {
-  --background: oklch(0.97 0.005 80);
-  --foreground: oklch(0.15 0.01 280);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.01 280);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.01 280);
-  --primary: oklch(0.6 0.25 330);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.45 0.01 250);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.93 0.005 280);
-  --muted-foreground: oklch(0.45 0.01 280);
-  --accent: oklch(0.55 0.12 85);
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.55 0.28 25);
-  --destructive-foreground: oklch(1 0 0);
-  --success: oklch(0.5 0.22 145);
-  --success-foreground: oklch(1 0 0);
-  --warning: oklch(0.6 0.18 60);
-  --warning-foreground: oklch(0 0 0);
-  --border: oklch(0.88 0.01 280);
-  --input: oklch(0.95 0.005 280);
-  --ring: oklch(0.6 0.25 330);
-  --chart-1: oklch(0.6 0.25 330);
-  --chart-2: oklch(0.5 0.22 145);
-  --chart-3: oklch(0.45 0.01 250);
-  --chart-4: oklch(0.55 0.12 85);
-  --chart-5: oklch(0.55 0.28 25);
-  --sidebar: oklch(0.98 0.005 280);
-  --sidebar-foreground: oklch(0.25 0 0);
-  --sidebar-primary: oklch(0.6 0.25 330);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.94 0.005 280);
-  --sidebar-accent-foreground: oklch(0.15 0 0);
-  --sidebar-border: oklch(0.9 0.01 280);
-  --sidebar-ring: oklch(0.6 0.25 330);
-}
+/* Light mode REMOVED intentionally — TANIT vive solo en dark.
+   El theme black + chrome + gold pierde su identidad en light. */
+
 
 @theme inline {
   --font-sans: 'Inter', 'Geist', sans-serif;
@@ -305,34 +269,6 @@
       inset 0 1px 0 oklch(1 0 0 / 0.03);
   }
   
-  .light .glass-panel-soul {
-    background: linear-gradient(135deg, 
-      oklch(0.98 0.01 330 / 0.8) 0%, 
-      oklch(0.96 0.005 330 / 0.6) 100%);
-    border: 1px solid oklch(0.6 0.25 330 / 0.2);
-    box-shadow: 
-      0 4px 20px oklch(0.6 0.25 330 / 0.08),
-      inset 0 1px 0 oklch(1 0 0 / 0.5);
-  }
-  
-  .light .glass-panel {
-    background: linear-gradient(135deg, 
-      oklch(1 0 0 / 0.9) 0%, 
-      oklch(0.98 0.005 280 / 0.8) 100%);
-    border: 1px solid oklch(0.88 0.01 280);
-    box-shadow: 
-      0 2px 15px oklch(0 0 0 / 0.06),
-      inset 0 1px 0 oklch(1 0 0 / 0.8);
-  }
-  
-  .light .glass-panel-dark {
-    background: linear-gradient(135deg, 
-      oklch(0.99 0.005 280 / 0.95) 0%, 
-      oklch(0.97 0.003 280 / 0.9) 100%);
-    border: 1px solid oklch(0.9 0.01 280);
-    box-shadow: 
-      0 4px 20px oklch(0 0 0 / 0.08);
-  }
   
   /* Chrome/Metallic Text */
   .chrome-text {
