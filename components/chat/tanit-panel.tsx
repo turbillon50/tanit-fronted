@@ -358,34 +358,73 @@ export function TanitPanel({
     }
   }
 
+  // Modo "central" cuando se renderiza sin onToggle (= la página /chat).
+  // El header se vuelve más prominente con avatar grande para sentirse como
+  // Forge en vForge — Tanit como protagonista, no como widget.
+  const isCentral = !onToggle
+
   return (
     <div className={cn(
-      "flex flex-col h-full glass-panel-dark border-l border-border/30",
+      "flex flex-col h-full bg-zinc-950/60 backdrop-blur-sm",
+      !isCentral && "glass-panel-dark border-l border-border/30",
       className
     )}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
+      <div
+        className={cn(
+          "flex items-center justify-between border-b border-zinc-900/80",
+          isCentral
+            ? "px-5 py-4 sm:py-5 bg-gradient-to-b from-amber-500/[0.06] via-transparent to-transparent"
+            : "px-4 py-3 bg-gradient-to-r from-primary/5 to-transparent"
+        )}
+      >
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-primary/50 glow-magenta-sm">
+            <div
+              className={cn(
+                "rounded-full overflow-hidden ring-2 ring-amber-500/40 shadow-[0_0_24px_-4px_rgb(245,158,11,0.4)]",
+                isCentral ? "h-12 w-12 sm:h-14 sm:w-14" : "h-10 w-10",
+              )}
+            >
               <Image
                 src="/images/tanit-avatar.jpeg"
                 alt="Tanit"
-                width={40}
-                height={40}
+                width={isCentral ? 56 : 40}
+                height={isCentral ? 56 : 40}
                 className="h-full w-full object-cover"
               />
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-success border-2 border-card animate-pulse" />
+            <span
+              className={cn(
+                "absolute rounded-full bg-emerald-400 ring-2 ring-zinc-950 animate-pulse",
+                isCentral ? "h-3.5 w-3.5 -bottom-0.5 -right-0.5" : "h-3 w-3 -bottom-0.5 -right-0.5",
+              )}
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-foreground">TANIT</h3>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/20 text-primary uppercase tracking-wider">AI</span>
+              <h3
+                className={cn(
+                  "font-bold text-zinc-100 tracking-wide",
+                  isCentral ? "text-lg sm:text-xl" : "text-sm",
+                )}
+              >
+                TANIT
+              </h3>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-300 uppercase tracking-wider ring-1 ring-amber-500/30">
+                AI
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-              <p className="text-[10px] text-success font-medium">Online · Mainnet</p>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <p
+                className={cn(
+                  "text-emerald-400 font-medium tracking-wide",
+                  isCentral ? "text-[11px] sm:text-xs" : "text-[10px]",
+                )}
+              >
+                Online · Mainnet · 24 símbolos
+              </p>
             </div>
           </div>
         </div>
@@ -393,8 +432,6 @@ export function TanitPanel({
           onClick={onToggle}
           className={cn(
             "p-2 rounded-lg hover:bg-muted/50 transition-colors",
-            // Solo se muestra cuando hay un handler (modo sheet/sidebar).
-            // En modo página central (sin onToggle), no aparece.
             onToggle ? "lg:hidden" : "hidden"
           )}
         >

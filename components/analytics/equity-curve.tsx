@@ -74,12 +74,29 @@ export function EquityCurve({
   const firstV = series[0].v
   const lastV = series[series.length - 1].v
   const peakV = peakBalance ?? Math.max(...series.map(s => s.v))
-  const minV = Math.min(...series.map(s => s.v))
-  const maxV = Math.max(...series.map(s => s.v), peakV)
-  const range = maxV - minV || 1
   const totalReturn = firstV > 0 ? ((lastV - firstV) / firstV) * 100 : 0
   const drawdownFromPeak = peakV > 0 ? ((peakV - lastV) / peakV) * 100 : 0
   const isProfit = lastV >= firstV
+
+  // Smart auto-scale: si hay un outlier muy alto (peak histórico vs valor
+  // actual aplastado abajo), recortamos el rango visible al P5–P95 de la
+  // serie + headroom hacia el peak. Antes la línea quedaba pegada al fondo
+  // cuando el cliff de drawdown era grande (peak $144 pero data actual $47).
+  const rawValues = series.map(s => s.v)
+  const sortedV = [...rawValues].sort((a, b) => a - b)
+  const visibleMin = sortedV[Math.floor(sortedV.length * 0.02)] ?? sortedV[0]
+  const visibleMax = sortedV[Math.floor(sortedV.length * 0.98)] ?? sortedV[sortedV.length - 1]
+  // Si el peak es muy externo al rango visible, lo metemos dentro pero sin
+  // exagerar (clamp) — así la línea ocupa los 2/3 superiores del chart y
+  // el peak aparece arriba como referencia.
+  const dataRange = visibleMax - visibleMin || 1
+  const padding = dataRange * 0.15
+  const minV = visibleMin - padding
+  // Solo metemos peak en el chart si está cerca; si no, tope del chart =
+  // visibleMax con padding (peak aparece como dashed line dentro)
+  const peakInRange = peakV <= visibleMax + dataRange * 2
+  const maxV = peakInRange ? Math.max(visibleMax + padding, peakV + padding * 0.5) : visibleMax + padding
+  const range = maxV - minV || 1
 
   const W = 720
   const H = 240
@@ -87,8 +104,12 @@ export function EquityCurve({
   const padY = 12
 
   const xFor = (i: number) => padX + (i / (series.length - 1)) * (W - 2 * padX)
-  const yFor = (v: number) => padY + (1 - (v - minV) / range) * (H - 2 * padY)
+  const yFor = (v: number) => {
+    const clamped = Math.max(minV, Math.min(maxV, v))
+    return padY + (1 - (clamped - minV) / range) * (H - 2 * padY)
+  }
   const peakY = yFor(peakV)
+  const peakOffChart = peakV > maxV
 
   const linePath = "M " + series.map((s, i) => `${xFor(i).toFixed(1)} ${yFor(s.v).toFixed(1)}`).join(" L ")
   const fillPath = `${linePath} L ${xFor(series.length - 1).toFixed(1)} ${H - padY} L ${xFor(0).toFixed(1)} ${H - padY} Z`
@@ -180,8 +201,8 @@ export function EquityCurve({
               <stop offset="80%" stopColor="rgb(239,68,68)" stopOpacity="0.04" />
               <stop offset="100%" stopColor="rgb(239,68,68)" stopOpacity="0" />
             </linearGradient>
-            <filter id="lineGlow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="0.9" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
                 <feMergeNode in="SourceGraphic" />
@@ -213,7 +234,7 @@ export function EquityCurve({
             </g>
           ))}
 
-          {showDrawdownZone && (
+          {showDrawdownZone && !peakOffChart && (
             <>
               <line
                 x1={padX}
@@ -238,6 +259,34 @@ export function EquityCurve({
               </text>
             </>
           )}
+          {/* Peak off-chart indicator — cuando el cliff es tan grande que
+              peak no cabe en el viewport actual. Aparece como banderola
+              superior con la cifra. */}
+          {peakOffChart && (
+            <g>
+              <line
+                x1={padX}
+                y1={padY + 1}
+                x2={W - padX}
+                y2={padY + 1}
+                stroke="rgb(239,68,68)"
+                strokeWidth="0.5"
+                strokeDasharray="2,3"
+                opacity="0.6"
+              />
+              <text
+                x={W - padX - 4}
+                y={padY + 12}
+                fontSize="9"
+                fill="rgb(239,68,68)"
+                opacity="0.8"
+                textAnchor="end"
+                fontFamily="ui-monospace, monospace"
+              >
+                ↑ Peak ${peakV.toFixed(2)} (fuera de rango · −{drawdownFromPeak.toFixed(1)}%)
+              </text>
+            </g>
+          )}
 
           <path
             d={fillPath}
@@ -248,7 +297,7 @@ export function EquityCurve({
             d={linePath}
             fill="none"
             stroke={isProfit ? "rgb(245,158,11)" : "rgb(239,68,68)"}
-            strokeWidth="2"
+            strokeWidth="1.5"
             strokeLinejoin="round"
             strokeLinecap="round"
             filter="url(#lineGlow)"
@@ -261,11 +310,10 @@ export function EquityCurve({
             const color = isProfit ? "rgb(251,191,36)" : "rgb(248,113,113)"
             return (
               <>
-                <circle cx={lx} cy={ly} r="6" fill={color} opacity="0.25">
-                  <animate attributeName="r" values="6;9;6" dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.25;0.05;0.25" dur="2s" repeatCount="indefinite" />
+                <circle cx={lx} cy={ly} r="4" fill={color} opacity="0.18">
+                  <animate attributeName="r" values="4;6;4" dur="2.4s" repeatCount="indefinite" />
                 </circle>
-                <circle cx={lx} cy={ly} r="3" fill={color} />
+                <circle cx={lx} cy={ly} r="2.4" fill={color} />
               </>
             )
           })()}
