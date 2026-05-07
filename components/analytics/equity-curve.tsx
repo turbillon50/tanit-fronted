@@ -1,132 +1,346 @@
 "use client"
 
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts"
+import { useState, useMemo, useRef } from "react"
+import { cn } from "@/lib/utils"
 
-// Generate mock equity curve data
-const generateEquityData = () => {
-  const data = []
-  let equity = 100000
-  const startDate = new Date("2025-01-01")
-  
-  for (let i = 0; i < 90; i++) {
-    const date = new Date(startDate)
-    date.setDate(date.getDate() + i)
-    
-    // Simulate realistic equity curve with some volatility
-    const dailyReturn = (Math.random() - 0.45) * 0.03
-    equity = equity * (1 + dailyReturn)
-    
-    data.push({
-      date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      equity: Math.round(equity),
-      benchmark: 100000 + i * 500, // Simple benchmark line
-    })
-  }
-  
-  return data
+export type Timeframe = "1H" | "6H" | "24H" | "7D" | "30D" | "ALL"
+
+export interface BalanceSnapshot {
+  id: number
+  balance: string
+  createdAt: string
 }
 
-const equityData = generateEquityData()
+interface EquityCurveProps {
+  snapshots: BalanceSnapshot[]
+  currentBalance: number
+  /** Optional override of the peak (useful when current > all snapshots) */
+  peakBalance?: number
+  /** ms since epoch — defaults to now */
+  nowTs?: number
+  className?: string
+}
 
-export function EquityCurve() {
+/**
+ * Premium equity curve — black canvas, gold line with halo, gradient fill,
+ * drawdown zone, grid labels, tooltip on touch/hover.
+ *
+ * Trading-station feel — inspired by Bloomberg / TradingView dark themes.
+ */
+export function EquityCurve({
+  snapshots,
+  currentBalance,
+  peakBalance,
+  nowTs = Date.now(),
+  className,
+}: EquityCurveProps) {
+  const [timeframe, setTimeframe] = useState<Timeframe>("ALL")
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  const filtered = useMemo(() => {
+    if (timeframe === "ALL") return snapshots
+    const winMs: Record<Exclude<Timeframe, "ALL">, number> = {
+      "1H": 60 * 60 * 1000,
+      "6H": 6 * 60 * 60 * 1000,
+      "24H": 24 * 60 * 60 * 1000,
+      "7D": 7 * 24 * 60 * 60 * 1000,
+      "30D": 30 * 24 * 60 * 60 * 1000,
+    }
+    const cutoff = nowTs - winMs[timeframe]
+    return snapshots.filter(s => new Date(s.createdAt).getTime() >= cutoff)
+  }, [snapshots, timeframe, nowTs])
+
+  const series = useMemo(() => {
+    const arr = [...filtered, {
+      id: -1,
+      balance: String(currentBalance),
+      createdAt: new Date(nowTs).toISOString(),
+    }]
+    return arr.map(s => ({
+      v: parseFloat(s.balance),
+      t: new Date(s.createdAt).getTime(),
+    }))
+  }, [filtered, currentBalance, nowTs])
+
+  if (series.length < 2) {
+    return (
+      <div className={cn("rounded-xl border border-zinc-800 bg-zinc-950/60 p-6 text-center", className)}>
+        <p className="text-sm text-zinc-500">Esperando más data para la curva…</p>
+      </div>
+    )
+  }
+
+  const firstV = series[0].v
+  const lastV = series[series.length - 1].v
+  const peakV = peakBalance ?? Math.max(...series.map(s => s.v))
+  const minV = Math.min(...series.map(s => s.v))
+  const maxV = Math.max(...series.map(s => s.v), peakV)
+  const range = maxV - minV || 1
+  const totalReturn = firstV > 0 ? ((lastV - firstV) / firstV) * 100 : 0
+  const drawdownFromPeak = peakV > 0 ? ((peakV - lastV) / peakV) * 100 : 0
+  const isProfit = lastV >= firstV
+
+  const W = 720
+  const H = 240
+  const padX = 8
+  const padY = 12
+
+  const xFor = (i: number) => padX + (i / (series.length - 1)) * (W - 2 * padX)
+  const yFor = (v: number) => padY + (1 - (v - minV) / range) * (H - 2 * padY)
+  const peakY = yFor(peakV)
+
+  const linePath = "M " + series.map((s, i) => `${xFor(i).toFixed(1)} ${yFor(s.v).toFixed(1)}`).join(" L ")
+  const fillPath = `${linePath} L ${xFor(series.length - 1).toFixed(1)} ${H - padY} L ${xFor(0).toFixed(1)} ${H - padY} Z`
+
+  const showDrawdownZone = peakV > lastV && drawdownFromPeak > 0.5
+
+  const gridLevels = 4
+  const grid = Array.from({ length: gridLevels + 1 }, (_, i) => {
+    const v = maxV - (range * i) / gridLevels
+    return { v, y: yFor(v) }
+  })
+
+  function handlePointer(e: React.PointerEvent<SVGSVGElement>) {
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const x = e.clientX - rect.left
+    const ratio = x / rect.width
+    const idx = Math.round(ratio * (series.length - 1))
+    setHoverIdx(Math.max(0, Math.min(series.length - 1, idx)))
+  }
+
+  const tfButtons: Timeframe[] = ["1H", "6H", "24H", "7D", "30D", "ALL"]
+
   return (
-    <div className="glass-panel rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
+    <div
+      className={cn(
+        "rounded-xl border border-zinc-800 bg-gradient-to-br from-zinc-950 to-zinc-900/50 backdrop-blur-sm overflow-hidden",
+        className
+      )}
+    >
+      <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-3">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Equity Curve</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Portfolio value over time</p>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgb(245,158,11,0.8)] animate-pulse" />
+            <h3 className="text-sm font-semibold tracking-wide text-zinc-100">Equity Curve</h3>
+            <span className="text-[10px] uppercase tracking-[0.15em] text-zinc-500">
+              · {snapshots.length} snapshots · live
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-4 rounded bg-primary" />
-            <span className="text-[10px] text-muted-foreground">Portfolio</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-4 rounded bg-muted-foreground/30" />
-            <span className="text-[10px] text-muted-foreground">Benchmark</span>
-          </div>
+        <div className="text-right">
+          <p
+            className={cn(
+              "text-lg font-bold tabular-nums tracking-tight",
+              isProfit ? "text-emerald-400" : "text-red-400"
+            )}
+          >
+            {isProfit ? "+" : ""}
+            {totalReturn.toFixed(2)}%
+          </p>
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500">Total return</p>
         </div>
       </div>
 
-      {/* Chart */}
-      <div className="h-[300px] p-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={equityData}>
-            <defs>
-              <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="oklch(0.7 0.25 330)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="oklch(0.7 0.25 330)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-            <XAxis
-              dataKey="date"
-              tick={{ fill: "#6b7280", fontSize: 10 }}
-              axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{ fill: "#6b7280", fontSize: 10 }}
-              axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
-              tickLine={false}
-              tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "rgba(0,0,0,0.9)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "8px",
-                fontSize: "12px",
-              }}
-              formatter={(value: number) => [`$${value.toLocaleString()}`, ""]}
-            />
-            <Area
-              type="monotone"
-              dataKey="benchmark"
-              stroke="rgba(255,255,255,0.2)"
-              strokeWidth={1}
-              fill="none"
-              strokeDasharray="5 5"
-            />
-            <Area
-              type="monotone"
-              dataKey="equity"
-              stroke="oklch(0.7 0.25 330)"
-              strokeWidth={2}
-              fill="url(#equityGradient)"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <div className="flex items-center gap-1 px-5 pb-3">
+        {tfButtons.map(tf => (
+          <button
+            key={tf}
+            onClick={() => setTimeframe(tf)}
+            className={cn(
+              "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors tabular-nums",
+              timeframe === tf
+                ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40"
+                : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+            )}
+          >
+            {tf}
+          </button>
+        ))}
       </div>
 
-      {/* Summary */}
-      <div className="px-5 py-3 border-t border-border/50 bg-muted/10 grid grid-cols-4 gap-4">
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground">Starting</p>
-          <p className="text-sm font-semibold text-foreground">$100,000</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground">Current</p>
-          <p className="text-sm font-semibold text-success">$284,621</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground">Peak</p>
-          <p className="text-sm font-semibold text-foreground">$296,420</p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground">Return</p>
-          <p className="text-sm font-semibold text-success">+184.6%</p>
-        </div>
+      <div className="px-5 pb-2 relative">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="w-full h-[240px] cursor-crosshair touch-none"
+          onPointerMove={handlePointer}
+          onPointerLeave={() => setHoverIdx(null)}
+        >
+          <defs>
+            <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgb(251,191,36)" stopOpacity="0.35" />
+              <stop offset="60%" stopColor="rgb(245,158,11)" stopOpacity="0.10" />
+              <stop offset="100%" stopColor="rgb(245,158,11)" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="redGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgb(239,68,68)" stopOpacity="0.25" />
+              <stop offset="80%" stopColor="rgb(239,68,68)" stopOpacity="0.04" />
+              <stop offset="100%" stopColor="rgb(239,68,68)" stopOpacity="0" />
+            </linearGradient>
+            <filter id="lineGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {grid.map((g, i) => (
+            <g key={i}>
+              <line
+                x1={padX}
+                y1={g.y}
+                x2={W - padX}
+                y2={g.y}
+                stroke="rgb(63,63,70)"
+                strokeWidth="0.5"
+                strokeDasharray="2,4"
+                opacity="0.5"
+              />
+              <text
+                x={padX + 4}
+                y={g.y - 3}
+                fontSize="10"
+                fill="rgb(113,113,122)"
+                fontFamily="ui-monospace, monospace"
+              >
+                ${g.v.toFixed(2)}
+              </text>
+            </g>
+          ))}
+
+          {showDrawdownZone && (
+            <>
+              <line
+                x1={padX}
+                y1={peakY}
+                x2={W - padX}
+                y2={peakY}
+                stroke="rgb(239,68,68)"
+                strokeWidth="0.5"
+                strokeDasharray="3,3"
+                opacity="0.5"
+              />
+              <text
+                x={W - padX - 4}
+                y={peakY - 4}
+                fontSize="9"
+                fill="rgb(239,68,68)"
+                opacity="0.7"
+                textAnchor="end"
+                fontFamily="ui-monospace, monospace"
+              >
+                Peak ${peakV.toFixed(2)}
+              </text>
+            </>
+          )}
+
+          <path
+            d={fillPath}
+            fill={isProfit ? "url(#goldGradient)" : "url(#redGradient)"}
+          />
+
+          <path
+            d={linePath}
+            fill="none"
+            stroke={isProfit ? "rgb(245,158,11)" : "rgb(239,68,68)"}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            filter="url(#lineGlow)"
+          />
+
+          {(() => {
+            const last = series[series.length - 1]
+            const lx = xFor(series.length - 1)
+            const ly = yFor(last.v)
+            const color = isProfit ? "rgb(251,191,36)" : "rgb(248,113,113)"
+            return (
+              <>
+                <circle cx={lx} cy={ly} r="6" fill={color} opacity="0.25">
+                  <animate attributeName="r" values="6;9;6" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.25;0.05;0.25" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <circle cx={lx} cy={ly} r="3" fill={color} />
+              </>
+            )
+          })()}
+
+          {hoverIdx !== null && series[hoverIdx] && (() => {
+            const s = series[hoverIdx]
+            const cx = xFor(hoverIdx)
+            const cy = yFor(s.v)
+            const tooltipX = cx > W / 2 ? cx - 110 : cx + 10
+            return (
+              <>
+                <line
+                  x1={cx}
+                  y1={padY}
+                  x2={cx}
+                  y2={H - padY}
+                  stroke="rgb(245,158,11)"
+                  strokeWidth="0.8"
+                  opacity="0.5"
+                  strokeDasharray="2,2"
+                />
+                <circle cx={cx} cy={cy} r="4" fill="rgb(245,158,11)" />
+                <circle cx={cx} cy={cy} r="2" fill="rgb(10,10,12)" />
+                <g transform={`translate(${tooltipX}, ${Math.max(8, cy - 30)})`}>
+                  <rect width="100" height="42" rx="4" fill="rgb(15,15,18)" stroke="rgb(63,63,70)" strokeWidth="0.5" />
+                  <text x="8" y="16" fontSize="11" fill="rgb(245,158,11)" fontFamily="ui-monospace, monospace" fontWeight="600">
+                    ${s.v.toFixed(2)}
+                  </text>
+                  <text x="8" y="32" fontSize="9" fill="rgb(161,161,170)" fontFamily="ui-monospace, monospace">
+                    {new Date(s.t).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                  </text>
+                </g>
+              </>
+            )
+          })()}
+        </svg>
       </div>
+
+      <div className="grid grid-cols-3 gap-3 px-5 pb-5 pt-2 border-t border-zinc-900/50">
+        <FooterStat label="Inicio" value={`$${firstV.toFixed(2)}`} />
+        <FooterStat label="Pico" value={`$${peakV.toFixed(2)}`} accent="amber" />
+        <FooterStat
+          label="Ahora"
+          value={`$${lastV.toFixed(2)}`}
+          accent={isProfit ? "emerald" : "red"}
+          sub={firstV > 0 ? `${isProfit ? "+" : ""}${totalReturn.toFixed(2)}%` : undefined}
+        />
+      </div>
+    </div>
+  )
+}
+
+function FooterStat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string
+  value: string
+  sub?: string
+  accent?: "amber" | "emerald" | "red"
+}) {
+  const valColor =
+    accent === "amber" ? "text-amber-300" :
+    accent === "emerald" ? "text-emerald-400" :
+    accent === "red" ? "text-red-400" :
+    "text-zinc-100"
+  return (
+    <div className="text-center">
+      <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">{label}</p>
+      <p className={cn("text-base font-bold tabular-nums", valColor)}>{value}</p>
+      {sub && (
+        <p className={cn("text-[10px] tabular-nums mt-0.5", valColor)}>{sub}</p>
+      )}
     </div>
   )
 }
