@@ -391,7 +391,12 @@ export function TanitPanel({
         </div>
         <button
           onClick={onToggle}
-          className="lg:hidden p-2 rounded-lg hover:bg-muted/50 transition-colors"
+          className={cn(
+            "p-2 rounded-lg hover:bg-muted/50 transition-colors",
+            // Solo se muestra cuando hay un handler (modo sheet/sidebar).
+            // En modo página central (sin onToggle), no aparece.
+            onToggle ? "lg:hidden" : "hidden"
+          )}
         >
           <X className="h-4 w-4 text-muted-foreground" />
         </button>
