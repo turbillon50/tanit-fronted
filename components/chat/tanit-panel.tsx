@@ -253,83 +253,101 @@ export function TanitPanel({
     try {
       const payload: Record<string, unknown> = { message: userText, channel, sender: userSender }
       if (sentImages.length > 0) {
-        // Primera foto en `image` para retrocompatibilidad
         payload.image = { base64: sentImages[0].base64, mimeType: sentImages[0].mimeType }
-        // Array completo en `images` para cuando el backend soporte multi-foto.
         payload.images = sentImages.map(img => ({ base64: img.base64, mimeType: img.mimeType }))
       }
 
-      // Streaming SSE — mantiene la conexión viva con heartbeats cada 2s
-      // mientras Gemini procesa. Resuelve el "se cortó la conexión" en cold
-      // start o redes móviles. La lógica de Tanit no cambia — solo cómo se
-      // entrega la respuesta.
-      const res = await fetch(`${apiUrl}/bot/gemini-chat-stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "text/event-stream",
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok || !res.body) {
-        // Fallback: si el endpoint streaming falla (404 en Railway si no
-        // está deployado todavía), reintenta con el endpoint clásico.
-        const fallback = await fetch(`${apiUrl}/bot/gemini-chat`, {
+      // Helper: llamada al endpoint clásico (sin streaming).
+      // Fallback robusto cuando el SSE falla por cualquier razón.
+      const callClassic = async (): Promise<string> => {
+        const r = await fetch(`${apiUrl}/bot/gemini-chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         })
-        const data = await fallback.json() as { reply?: string; error?: string }
-        const reply = data.reply || data.error || "(sin respuesta)"
-        const assistantMessage: UIMessage = {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          content: reply,
-          timestamp: new Date(),
-          type: "normal",
-          senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
-        }
-        setMessages((prev) => [...prev, assistantMessage])
-        return
+        const d = await r.json().catch(() => ({})) as { reply?: string; error?: string }
+        return (d.reply ?? d.error ?? "").trim()
       }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ""
+      // 1) Intento principal: SSE streaming con heartbeats.
+      // 2) Si SSE falla por CUALQUIER razón (HTTP error, stream sin done,
+      //    reply vacío, parse error, network drop) → fallback transparente
+      //    al endpoint clásico SIN mostrar error al usuario.
+      // 3) Solo si AMBOS fallan, mostramos el mensaje de error.
       let finalReply = ""
-      let gotResponse = false
 
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const events = buffer.split("\n\n")
-        buffer = events.pop() ?? ""
-        for (const evt of events) {
-          if (!evt.startsWith("data: ")) continue
-          try {
-            const data = JSON.parse(evt.slice(6)) as {
-              type: "thinking" | "heartbeat" | "done" | "error"
-              reply?: string
-              message?: string
+      try {
+        const res = await fetch(`${apiUrl}/bot/gemini-chat-stream`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+          },
+          body: JSON.stringify(payload),
+        })
+
+        if (!res.ok || !res.body) {
+          throw new Error(`stream http ${res.status}`)
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ""
+        let streamError: string | null = null
+
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const events = buffer.split("\n\n")
+          buffer = events.pop() ?? ""
+          for (const evt of events) {
+            if (!evt.startsWith("data: ")) continue
+            try {
+              const data = JSON.parse(evt.slice(6)) as {
+                type: "thinking" | "heartbeat" | "done" | "error"
+                reply?: string
+                message?: string
+              }
+              if (data.type === "done" && data.reply) {
+                finalReply = data.reply
+              } else if (data.type === "error") {
+                streamError = data.message || "stream error"
+              }
+            } catch {
+              // skip malformed event
             }
-            if (data.type === "done" && data.reply) {
-              finalReply = data.reply
-              gotResponse = true
-            } else if (data.type === "error") {
-              throw new Error(data.message || "error desconocido")
-            }
-            // 'thinking' y 'heartbeat' se ignoran — solo mantienen la
-            // conexión viva. El UX ya muestra el typing-indicator.
-          } catch (parseErr) {
-            // Skip malformed events
           }
         }
-      }
+        // También procesa el último buffer si quedó algo válido
+        if (buffer.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(buffer.slice(6)) as {
+              type?: string; reply?: string; message?: string
+            }
+            if (data.type === "done" && data.reply && !finalReply) {
+              finalReply = data.reply
+            } else if (data.type === "error" && !streamError) {
+              streamError = data.message || "stream error"
+            }
+          } catch {
+            // skip
+          }
+        }
 
-      if (!gotResponse) {
-        throw new Error("la respuesta llegó vacía")
+        if (streamError) throw new Error(streamError)
+        if (!finalReply) throw new Error("stream sin done event")
+      } catch (streamErr) {
+        // Fallback silencioso al endpoint clásico
+        const classicReply = await callClassic()
+        if (classicReply) {
+          finalReply = classicReply
+        } else {
+          // Ambos fallaron — propagamos el error original del stream
+          throw streamErr instanceof Error
+            ? streamErr
+            : new Error(String(streamErr))
+        }
       }
 
       const assistantMessage: UIMessage = {
