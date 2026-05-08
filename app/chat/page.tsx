@@ -4,25 +4,14 @@ import { TanitPanel } from "@/components/chat/tanit-panel"
 import { MainLayout } from "@/components/layout/main-layout"
 
 /**
- * Tanit central — el cuarto donde Luis habla con Tanit.
- *
- * Inspirado en `vforge.site/forge`: el chat es el alma de la app.
- *
- * Layout:
- *  - Mobile: full screen, padding top para que el hamburger del Sidebar
- *    no tape el header del chat
- *  - Desktop: max-w-3xl centrado, full height
- *
- * MainLayout detecta `/chat` y oculta:
- *  - el right-sidebar TanitPanel (sería Tanit por duplicado)
- *  - el TanitMobileButton flotante
- *  - el TanitMobileSheet
- *  - removes el padding-right destinado al sidebar derecho
+ * Chat con Tanit — el centro de la app.
+ * MainLayout se encarga del sidebar izquierdo, el live sidebar derecho
+ * y la status bar inferior. Aquí solo el chat al centro.
  */
 export default function ChatPage() {
   return (
     <MainLayout>
-      <div className="flex h-[calc(100dvh-4rem)] lg:h-screen pt-12 lg:pt-0">
+      <div className="flex h-[calc(100dvh-3rem)] lg:h-[calc(100vh-3rem)] pt-14 lg:pt-0">
         <div className="flex-1 mx-auto w-full max-w-3xl flex flex-col">
           <TanitPanel className="flex-1 border-l-0" />
         </div>
