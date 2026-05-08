@@ -374,196 +374,66 @@ export function TanitPanel({
 
   return (
     <div className={cn(
-      "flex flex-col h-full bg-zinc-950/60 backdrop-blur-sm",
-      !isCentral && "glass-panel-dark border-l border-border/30",
+      "flex flex-col h-full bg-black",
+      !isCentral && "border-l border-zinc-900/60",
       className
     )}>
-      {/* Header */}
-      <div
-        className={cn(
-          "flex items-center justify-between border-b border-zinc-900/80",
-          isCentral
-            ? "px-5 py-4 sm:py-5 bg-gradient-to-b from-amber-500/[0.06] via-transparent to-transparent"
-            : "px-4 py-3 bg-gradient-to-r from-primary/5 to-transparent"
-        )}
-      >
+      {/* Header — sombrío, sin chrome ni gold */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-900/80">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div
-              className={cn(
-                "rounded-full overflow-hidden ring-2 ring-amber-500/40 shadow-[0_0_24px_-4px_rgb(245,158,11,0.4)]",
-                isCentral ? "h-12 w-12 sm:h-14 sm:w-14" : "h-10 w-10",
-              )}
-            >
+            <div className={cn(
+              "rounded-full overflow-hidden ring-1 ring-zinc-800",
+              isCentral ? "h-11 w-11" : "h-9 w-9",
+            )}>
               <Image
                 src="/images/tanit-avatar.jpeg"
                 alt="Tanit"
-                width={isCentral ? 56 : 40}
-                height={isCentral ? 56 : 40}
+                width={isCentral ? 44 : 36}
+                height={isCentral ? 44 : 36}
                 className="h-full w-full object-cover"
               />
             </div>
-            <span
-              className={cn(
-                "absolute rounded-full bg-emerald-400 ring-2 ring-zinc-950 animate-pulse",
-                isCentral ? "h-3.5 w-3.5 -bottom-0.5 -right-0.5" : "h-3 w-3 -bottom-0.5 -right-0.5",
-              )}
-            />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3
-                className={cn(
-                  "font-bold text-zinc-100 tracking-wide",
-                  isCentral ? "text-lg sm:text-xl" : "text-sm",
-                )}
-              >
-                TANIT
-              </h3>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-300 uppercase tracking-wider ring-1 ring-amber-500/30">
-                AI
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <p
-                className={cn(
-                  "text-emerald-400 font-medium tracking-wide",
-                  isCentral ? "text-[11px] sm:text-xs" : "text-[10px]",
-                )}
-              >
-                Online · Mainnet · 24 símbolos
-              </p>
-            </div>
+            <h3 className={cn(
+              "font-medium text-zinc-100 tracking-wide",
+              isCentral ? "text-base" : "text-sm",
+            )}>
+              Tanit
+            </h3>
           </div>
         </div>
         <button
           onClick={onToggle}
           className={cn(
-            "p-2 rounded-lg hover:bg-muted/50 transition-colors",
+            "p-2 rounded-lg hover:bg-zinc-900/80 transition-colors",
             onToggle ? "lg:hidden" : "hidden"
           )}
         >
-          <X className="h-4 w-4 text-muted-foreground" />
+          <X className="h-4 w-4 text-zinc-500" />
         </button>
       </div>
 
-      {/* Channel tabs — Íntimo (Luis ↔ Tanit) vs Operativo (loop / IAs / sistema) */}
-      <div className="flex gap-1 px-3 py-2 border-b border-border/30 bg-card/30">
-        <button
-          type="button"
-          onClick={() => setChannel("intimate")}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-            channel === "intimate"
-              ? "bg-primary/15 text-primary border border-primary/30"
-              : "text-muted-foreground hover:bg-muted/40 border border-transparent",
-          )}
-        >
-          <Heart className="h-3.5 w-3.5" />
-          Íntimo
-        </button>
-        <button
-          type="button"
-          onClick={() => setChannel("operational")}
-          className={cn(
-            "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-            channel === "operational"
-              ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
-              : "text-muted-foreground hover:bg-muted/40 border border-transparent",
-          )}
-        >
-          <Settings2 className="h-3.5 w-3.5" />
-          Operativo
-        </button>
-      </div>
-
-      {/* AI Alerts Section */}
-      <div className="border-b border-border/30">
-        <button
-          onClick={() => setShowAlerts(!showAlerts)}
-          className="w-full px-4 py-2 flex items-center justify-between hover:bg-muted/20 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-3.5 w-3.5 text-warning" />
-            <span className="text-xs font-medium text-foreground">Active Alerts</span>
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-destructive/20 text-destructive">
-              {aiAlerts.length}
-            </span>
-          </div>
-          {showAlerts ? (
-            <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-        </button>
-
-        {showAlerts && (
-          <div className="px-3 pb-3 space-y-2 animate-slide-up">
-            {aiAlerts.map((alert) => (
-              <div
-                key={alert.id}
-                className={cn(
-                  "p-3 rounded-lg border transition-all",
-                  alert.type === "danger" && "glass-panel-danger border-destructive/30 animate-pulse-danger",
-                  alert.type === "warning" && "bg-warning/5 border-warning/30",
-                  alert.type === "insight" && "bg-primary/5 border-primary/30"
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  {alert.type === "danger" && <AlertTriangle className="h-3.5 w-3.5 text-destructive mt-0.5 flex-shrink-0" />}
-                  {alert.type === "warning" && <TrendingDown className="h-3.5 w-3.5 text-warning mt-0.5 flex-shrink-0" />}
-                  {alert.type === "insight" && <Brain className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />}
-                  <div className="flex-1 min-w-0">
-                    <p className={cn(
-                      "text-xs font-semibold",
-                      alert.type === "danger" && "text-destructive",
-                      alert.type === "warning" && "text-warning",
-                      alert.type === "insight" && "text-primary"
-                    )}>
-                      {alert.title}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                      {alert.message}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+      {/* Messages — solo chat, sin tabs ni banner */}
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 scrollbar-thin">
         {messages.map((message) => {
-          const meta = senderMeta(message.senderType)
           return (
             <div
               key={message.id}
               className={cn(
-                "flex flex-col gap-1 animate-slide-up",
+                "flex flex-col animate-slide-up",
                 message.role === "user" ? "items-end" : "items-start"
               )}
             >
-              <span className={cn(
-                "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border",
-                meta.chip
-              )}>
-                {meta.label}
-              </span>
               <div
                 className={cn(
-                  "max-w-[90%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap",
+                  "max-w-[88%] rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap",
                   message.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    ? "bg-zinc-200 text-zinc-900 rounded-br-md"
                     : message.type === "warning"
-                      ? "bg-warning/10 border border-warning/30 text-foreground rounded-bl-md"
-                      : message.type === "alert"
-                        ? "bg-destructive/10 border border-destructive/30 text-foreground rounded-bl-md"
-                        : message.type === "insight"
-                          ? "bg-primary/10 border border-primary/30 text-foreground rounded-bl-md"
-                          : "bg-muted text-foreground rounded-bl-md"
+                      ? "bg-zinc-900 border border-rose-950/60 text-zinc-200 rounded-bl-md"
+                      : "bg-zinc-900/80 text-zinc-100 rounded-bl-md"
                 )}
               >
                 {message.content}
