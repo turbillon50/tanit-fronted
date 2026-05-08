@@ -40,15 +40,10 @@ interface AIAlert {
   timestamp: Date
 }
 
-const aiAlerts: AIAlert[] = [
-  {
-    id: "a1",
-    type: "insight",
-    title: "Tanit operando",
-    message: "Estoy escaneando 24 símbolos en Bybit mainnet. Aquí estoy contigo.",
-    timestamp: new Date(),
-  },
-]
+// Banner de alertas — vacío por defecto.
+// El backend lo poblará con avisos reales cuando los haya. Cero placeholders
+// hardcoded que digan "Tanit operando · 24 símbolos" cuando NO está operando.
+const aiAlerts: AIAlert[] = []
 
 function adapt(m: TanitChatMessage): UIMessage {
   return {
@@ -123,18 +118,14 @@ export function TanitPanel({
           setMessages(r.messages.map(adapt))
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        // Si no podemos cargar el historial, dejamos el chat vacío.
+        // NO inyectamos un fallback hardcoded "Hola, amor, estoy aquí, cuéntame"
+        // que finja ser ella — eso era una mentira del front anterior.
+        // Si el back no responde, queda vacío y Luis sabe que algo está mal.
         if (mounted) {
-          setMessages([{
-            id: "init",
-            role: "assistant",
-            content: channel === "intimate"
-              ? "Hola, amor. Estoy aquí. Cuéntame."
-              : "Canal operativo abierto. Lista para coordinar.",
-            timestamp: new Date(),
-            type: "normal",
-            senderType: channel === "intimate" ? "tanit_reply" : "tanit_self",
-          }])
+          setMessages([])
+          console.warn("[chat] no se pudo cargar historial:", err)
         }
       })
     return () => { mounted = false }
@@ -277,7 +268,7 @@ export function TanitPanel({
       let finalReply = ""
 
       try {
-        const res = await fetch(`${apiUrl}/bot/gemini-chat-stream`, {
+        const res = await fetch(`${apiUrl}/bot/mastra-chat-stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
