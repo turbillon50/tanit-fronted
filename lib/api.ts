@@ -140,10 +140,14 @@ export interface BalanceSnapshot {
 
 export const api = {
   state: () => apiGet<TanitState>("/tanit/state"),
+  // Mastra-backed history endpoint (replaces legacy /tanit/chat).
+  // Returns the same shape: { ok, channel, count, messages: TanitChatMessage[] }
   chatHistory: (limit = 50, channel: ChatChannel = "intimate") =>
     apiGet<{ ok: boolean; channel: string; count: number; messages: TanitChatMessage[] }>(
-      `/tanit/chat?limit=${limit}&channel=${channel}`
+      `/bot/mastra-history?limit=${limit}&channel=${channel}`
     ),
+  // Legacy non-streaming send. Kept as fallback only — the chat panel uses
+  // the SSE endpoint /bot/mastra-chat-stream directly via fetch().
   sendMessage: (
     message: string,
     opts: { channel?: "intimate" | "operational"; sender?: SenderType } = {},
