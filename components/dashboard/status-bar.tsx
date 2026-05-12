@@ -62,7 +62,7 @@ export function StatusBar() {
           chatCount: s?.state.chatCount ?? 0,
           positions: positionsArr.length,
           pnlDay,
-          killSwitch: !!k?.killSwitch,
+          killSwitch: !!k?.active,
         })
       } catch {}
     }

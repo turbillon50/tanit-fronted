@@ -160,7 +160,10 @@ export interface ThreadMessage {
 
 export interface KillSwitchStatus {
   ok: boolean;
-  killSwitch: boolean;
+  // El backend devuelve `active` (que es el kill_switch).
+  active: boolean;
+  updated_at?: string;
+  updated_by?: string;
 }
 
 export const api = {
