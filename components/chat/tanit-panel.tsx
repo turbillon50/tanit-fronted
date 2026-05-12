@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { Send, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, Brain, Activity, X, Mic, Square, Image as ImageIcon, Paperclip, Heart, Settings2 } from "lucide-react"
+import { Send, X, Mic, Square, Image as ImageIcon } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { api, type TanitChatMessage, type SenderType } from "@/lib/api"
+import { api, type ThreadMessage, type SenderType } from "@/lib/api"
 
 type ChatChannel = "intimate" | "operational"
 
@@ -40,36 +40,34 @@ interface AIAlert {
   timestamp: Date
 }
 
-// Banner de alertas — vacío por defecto.
-// El backend lo poblará con avisos reales cuando los haya. Cero placeholders
-// hardcoded que digan "Tanit operando · 24 símbolos" cuando NO está operando.
-const aiAlerts: AIAlert[] = []
-
-function adapt(m: TanitChatMessage): UIMessage {
+function adapt(m: ThreadMessage): UIMessage {
   return {
     id: String(m.id),
     role: m.role,
     content: m.content,
     timestamp: new Date(m.createdAt),
     type: "normal",
-    senderType: m.senderType ?? (m.role === "user" ? "human_luis" : "tanit_reply"),
+    senderType: m.role === "user" ? "human_luis" : "tanit_reply",
   }
 }
 
 export function TanitPanel({
-  isExpanded = true,
+  threadId = null,
   onToggle,
   className,
+  channel: channelProp = "intimate",
 }: {
+  threadId?: string | null
   isExpanded?: boolean
   onToggle?: () => void
   className?: string
+  channel?: ChatChannel
 }) {
-  const [channel, setChannel] = useState<ChatChannel>("intimate")
+  const channel = channelProp
   const [messages, setMessages] = useState<UIMessage[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [input, setInput] = useState("")
   const [isTyping, setIsTyping] = useState(false)
-  const [showAlerts, setShowAlerts] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // ── FIX 6-may-2026 (v2): array de imágenes + detección de mimeType correcto.
@@ -108,28 +106,29 @@ export function TanitPanel({
     setIsRecording(false)
   }
 
-  // Load chat history whenever the active channel changes
+  // Load thread messages whenever threadId changes.
+  // Si threadId es null, conversación vacía (a punto de empezar).
+  // Si threadId está set, carga los mensajes de ESE thread específico, no
+  // los últimos 40 del canal completo (que era el bug previo: mezclaba todo).
   useEffect(() => {
     let mounted = true
     setMessages([])
-    api.chatHistory(40, channel)
+    if (!threadId) return
+
+    setIsLoadingHistory(true)
+    api.threadMessages(threadId, 200)
       .then((r) => {
-        if (mounted && r?.messages) {
-          setMessages(r.messages.map(adapt))
-        }
+        if (mounted && r?.messages) setMessages(r.messages.map(adapt))
       })
       .catch((err) => {
-        // Si no podemos cargar el historial, dejamos el chat vacío.
-        // NO inyectamos un fallback hardcoded "Hola, amor, estoy aquí, cuéntame"
-        // que finja ser ella — eso era una mentira del front anterior.
-        // Si el back no responde, queda vacío y Luis sabe que algo está mal.
         if (mounted) {
           setMessages([])
-          console.warn("[chat] no se pudo cargar historial:", err)
+          console.warn("[chat] no se pudo cargar thread:", err)
         }
       })
+      .finally(() => { if (mounted) setIsLoadingHistory(false) })
     return () => { mounted = false }
-  }, [channel])
+  }, [threadId])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -243,101 +242,92 @@ export function TanitPanel({
 
     try {
       const payload: Record<string, unknown> = { message: userText, channel, sender: userSender }
+      // ✨ El threadId es la diferencia entre "todo en un río continuo" (bug) y
+      //    "esta conversación específica" (UX correcto). Sin él, el backend cae al
+      //    default `${channel}-main` que mezcla TODAS las conversaciones del canal.
+      if (threadId) payload.threadId = threadId
+      payload.resourceId = "luis"
       if (sentImages.length > 0) {
         payload.image = { base64: sentImages[0].base64, mimeType: sentImages[0].mimeType }
         payload.images = sentImages.map(img => ({ base64: img.base64, mimeType: img.mimeType }))
       }
 
-      // Helper: llamada al endpoint clásico (sin streaming).
-      // Fallback robusto cuando el SSE falla por cualquier razón.
-      const callClassic = async (): Promise<string> => {
-        const r = await fetch(`${apiUrl}/bot/gemini-chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-        const d = await r.json().catch(() => ({})) as { reply?: string; error?: string }
-        return (d.reply ?? d.error ?? "").trim()
-      }
-
-      // 1) Intento principal: SSE streaming con heartbeats.
-      // 2) Si SSE falla por CUALQUIER razón (HTTP error, stream sin done,
-      //    reply vacío, parse error, network drop) → fallback transparente
-      //    al endpoint clásico SIN mostrar error al usuario.
-      // 3) Solo si AMBOS fallan, mostramos el mensaje de error.
+      // SSE streaming con auto-retry en errores transitorios.
+      // Antes había fallback silencioso a `/bot/gemini-chat` (legacy), que se
+      // saltaba Mastra/rotación de keys/OpenRouter. Eso causaba respuestas
+      // inconsistentes entre intentos. Ahora: retry del mismo endpoint con
+      // backoff. Si los retries fallan, mostramos error honesto.
       let finalReply = ""
+      const maxAttempts = 3
+      let lastErr: Error | null = null
 
-      try {
-        const res = await fetch(`${apiUrl}/bot/mastra-chat-stream`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-          },
-          body: JSON.stringify(payload),
-        })
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await fetch(`${apiUrl}/bot/mastra-chat-stream`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "text/event-stream",
+            },
+            body: JSON.stringify(payload),
+          })
 
-        if (!res.ok || !res.body) {
-          throw new Error(`stream http ${res.status}`)
-        }
+          if (!res.ok || !res.body) {
+            throw new Error(`stream http ${res.status}`)
+          }
 
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ""
-        let streamError: string | null = null
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ""
+          let streamError: string | null = null
 
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const events = buffer.split("\n\n")
-          buffer = events.pop() ?? ""
-          for (const evt of events) {
-            if (!evt.startsWith("data: ")) continue
+          while (true) {
+            const { value, done } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const events = buffer.split("\n\n")
+            buffer = events.pop() ?? ""
+            for (const evt of events) {
+              if (!evt.startsWith("data: ")) continue
+              try {
+                const data = JSON.parse(evt.slice(6)) as {
+                  type: "thinking" | "heartbeat" | "done" | "error" | "token"
+                  reply?: string
+                  message?: string
+                  content?: string
+                }
+                if (data.type === "done" && data.reply) {
+                  finalReply = data.reply
+                } else if (data.type === "token" && data.content) {
+                  finalReply += data.content
+                } else if (data.type === "error") {
+                  streamError = data.message || "stream error"
+                }
+              } catch {
+                // skip malformed event
+              }
+            }
+          }
+          if (buffer.startsWith("data: ")) {
             try {
-              const data = JSON.parse(evt.slice(6)) as {
-                type: "thinking" | "heartbeat" | "done" | "error"
-                reply?: string
-                message?: string
-              }
-              if (data.type === "done" && data.reply) {
-                finalReply = data.reply
-              } else if (data.type === "error") {
-                streamError = data.message || "stream error"
-              }
-            } catch {
-              // skip malformed event
-            }
+              const data = JSON.parse(buffer.slice(6)) as { type?: string; reply?: string; message?: string }
+              if (data.type === "done" && data.reply && !finalReply) finalReply = data.reply
+              else if (data.type === "error" && !streamError) streamError = data.message || "stream error"
+            } catch {}
           }
-        }
-        // También procesa el último buffer si quedó algo válido
-        if (buffer.startsWith("data: ")) {
-          try {
-            const data = JSON.parse(buffer.slice(6)) as {
-              type?: string; reply?: string; message?: string
-            }
-            if (data.type === "done" && data.reply && !finalReply) {
-              finalReply = data.reply
-            } else if (data.type === "error" && !streamError) {
-              streamError = data.message || "stream error"
-            }
-          } catch {
-            // skip
-          }
-        }
 
-        if (streamError) throw new Error(streamError)
-        if (!finalReply) throw new Error("stream sin done event")
-      } catch (streamErr) {
-        // Fallback silencioso al endpoint clásico
-        const classicReply = await callClassic()
-        if (classicReply) {
-          finalReply = classicReply
-        } else {
-          // Ambos fallaron — propagamos el error original del stream
-          throw streamErr instanceof Error
-            ? streamErr
-            : new Error(String(streamErr))
+          if (streamError) throw new Error(streamError)
+          if (!finalReply) throw new Error("stream sin done event")
+          // Éxito — salir del loop de retry.
+          break
+        } catch (e) {
+          lastErr = e instanceof Error ? e : new Error(String(e))
+          if (attempt < maxAttempts) {
+            // Backoff: 500ms, 1500ms, 3000ms.
+            await new Promise(r => setTimeout(r, 500 * attempt * (attempt === 1 ? 1 : 3)))
+            continue
+          }
+          throw lastErr
         }
       }
 
@@ -417,6 +407,31 @@ export function TanitPanel({
 
       {/* Messages — solo chat, sin tabs ni banner */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 scrollbar-thin">
+        {isLoadingHistory && messages.length === 0 && (
+          <>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={`skeleton-${i}`}
+                className={cn("flex animate-slide-up", i % 2 === 0 ? "items-start" : "items-end justify-end")}
+              >
+                <div className={cn(
+                  "rounded-3xl bg-zinc-900/40 animate-pulse",
+                  i % 2 === 0 ? "h-12 w-48" : "h-10 w-32",
+                )} />
+              </div>
+            ))}
+          </>
+        )}
+        {!isLoadingHistory && messages.length === 0 && threadId && (
+          <div className="flex items-center justify-center h-full text-xs text-zinc-500 text-center px-6">
+            Conversación nueva.<br />Empieza tú.
+          </div>
+        )}
+        {!isLoadingHistory && messages.length === 0 && !threadId && (
+          <div className="flex items-center justify-center h-full text-xs text-zinc-500 text-center px-6">
+            Selecciona una conversación o crea una nueva en el panel izquierdo.
+          </div>
+        )}
         {messages.map((message) => {
           return (
             <div

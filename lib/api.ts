@@ -138,6 +138,31 @@ export interface BalanceSnapshot {
   createdAt: string;
 }
 
+// ─── Threads (conversaciones tipo ChatGPT) ─────────────────────────────────
+
+export interface ThreadInfo {
+  id: string;
+  resourceId: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  preview: string | null;
+  messageCount: number;
+}
+
+export interface ThreadMessage {
+  id: string;
+  threadId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export interface KillSwitchStatus {
+  ok: boolean;
+  killSwitch: boolean;
+}
+
 export const api = {
   state: () => apiGet<TanitState>("/tanit/state"),
   // Mastra-backed history endpoint (replaces legacy /tanit/chat).
@@ -175,4 +200,33 @@ export const api = {
     apiGet<{ ok: boolean; count: number; snapshots: BalanceSnapshot[] }>(
       `/tanit/balance-snapshots?limit=${limit}`
     ),
+
+  // ── Threads (conversaciones persistentes) ──
+  listThreads: (resourceId = "luis", limit = 50) =>
+    apiGet<{ ok: boolean; count: number; threads: ThreadInfo[] }>(
+      `/bot/threads?resourceId=${encodeURIComponent(resourceId)}&limit=${limit}`
+    ),
+  createThread: (resourceId = "luis", title?: string) =>
+    apiPost<{ ok: boolean; threadId: string; resourceId: string; title: string }>(
+      "/bot/threads",
+      { resourceId, title }
+    ),
+  threadMessages: (id: string, limit = 200) =>
+    apiGet<{ ok: boolean; threadId: string; count: number; messages: ThreadMessage[] }>(
+      `/bot/threads/${encodeURIComponent(id)}/messages?limit=${limit}`
+    ),
+  renameThread: (id: string, title: string) =>
+    request<{ ok: boolean; threadId: string; title: string }>(
+      "PATCH",
+      `/bot/threads/${encodeURIComponent(id)}`,
+      { title }
+    ),
+  deleteThread: (id: string) =>
+    request<{ ok: boolean; threadId: string }>(
+      "DELETE",
+      `/bot/threads/${encodeURIComponent(id)}`
+    ),
+
+  // ── Kill switch (governance) ──
+  killSwitch: () => apiGet<KillSwitchStatus>("/admin/kill-switch"),
 };

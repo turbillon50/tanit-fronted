@@ -40,20 +40,29 @@ export function StatusBar() {
     let mounted = true
     async function load() {
       try {
-        const [s, b, p] = await Promise.all([
+        const [s, b, p, k] = await Promise.all([
           api.state().catch(() => null),
           api.balance().catch(() => null),
           api.positions().catch(() => []),
+          api.killSwitch().catch(() => null),
         ])
         if (!mounted) return
+        // PnL realista: si hay posiciones abiertas, suma unrealized de cada una.
+        // Si no, totalPnl de los trades recientes que el back ya calcula.
+        // Antes mostraba `b?.unrealizedPnl` que solo refleja un instante del balance,
+        // no del día real.
+        const positionsArr = Array.isArray(p) ? p : []
+        const livePnl = positionsArr.reduce((sum, pos) => sum + (pos?.unrealizedPnl ?? 0), 0)
+        const tradePnl = s?.state.recentTrades.totalPnl ?? 0
+        const pnlDay = positionsArr.length > 0 ? livePnl : tradePnl
         setData({
           online: !!s?.ok,
           bybitOnline: !!b,
           memoryCount: s?.state.memoryCount ?? 0,
           chatCount: s?.state.chatCount ?? 0,
-          positions: p?.length ?? 0,
-          pnlDay: b?.unrealizedPnl ?? 0,
-          killSwitch: false, // TODO: leer governance cuando endpoint exista
+          positions: positionsArr.length,
+          pnlDay,
+          killSwitch: !!k?.killSwitch,
         })
       } catch {}
     }
@@ -102,7 +111,7 @@ export function StatusBar() {
           tone={data.pnlDay >= 0 ? "ok" : "bad"}
         />
 
-        {/* Kill switch (placeholder) */}
+        {/* Kill switch — leído de /admin/kill-switch en tiempo real */}
         {data.killSwitch && (
           <Pill
             icon={<ShieldAlert className="h-3 w-3" />}
