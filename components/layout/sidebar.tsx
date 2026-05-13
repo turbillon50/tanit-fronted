@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { MessageCircle, Menu, X, Settings } from "lucide-react"
+import { MessageCircle, Menu, X, Settings, LayoutDashboard } from "lucide-react"
 import { useState } from "react"
 import { VoTradingLogo } from "@/components/branding/vo-trading-logo"
 import { SettingsDrawer } from "@/components/settings/settings-drawer"
@@ -21,6 +21,12 @@ const navItems = [
     href: "/chat",
     icon: MessageCircle,
     primary: true,
+  },
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    primary: false,
   },
 ]
 

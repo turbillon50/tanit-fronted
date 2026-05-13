@@ -232,4 +232,44 @@ export const api = {
 
   // ── Kill switch (governance) ──
   killSwitch: () => apiGet<KillSwitchStatus>("/admin/kill-switch"),
+
+  // ── Motor ejecutor determinista ──
+  motorEjecutorStatus: () =>
+    apiGet<{
+      ok: boolean;
+      motor: {
+        hasCampaign: boolean;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        campaign: any | null;
+        timeLeftMinutes: number | null;
+      };
+    }>("/admin/motor-ejecutor/status"),
+
+  // ── Reportes que Tanit guarda en BD (no en el chat) ──
+  reports: (days = 7, category?: string) => {
+    const q = new URLSearchParams();
+    q.set("days", String(days));
+    if (category) q.set("category", category);
+    return apiGet<{
+      ok: boolean;
+      days: number;
+      count: number;
+      reports: Array<{
+        id: number;
+        category: string;
+        importance: string | null;
+        content: string;
+        createdAt: string;
+      }>;
+    }>(`/admin/reports?${q.toString()}`);
+  },
+
+  // ── WS Bybit status (qué símbolos están suscritos) ──
+  wsStatus: () =>
+    apiGet<{
+      ok: boolean;
+      connected: boolean;
+      count: number;
+      symbols: string[];
+    }>("/admin/ws/status"),
 };
