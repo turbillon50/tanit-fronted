@@ -1,30 +1,24 @@
 /** @type {import('next').NextConfig} */
+const BACKEND = "http://178.105.135.26";
+
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
+  typescript: { ignoreBuildErrors: true },
+  images: { unoptimized: true },
+  async rewrites() {
+    return [
+      { source: "/api/:path*",       destination: `${BACKEND}/api/:path*` },
+      { source: "/bot/:path*",       destination: `${BACKEND}/bot/:path*` },
+      { source: "/portfolio/:path*", destination: `${BACKEND}/portfolio/:path*` },
+      { source: "/admin/:path*",     destination: `${BACKEND}/admin/:path*` },
+    ];
   },
-  images: {
-    unoptimized: true,
-  },
-  // Cache-busting: HTML, manifest, and root files must be revalidated on every
-  // request so the installed PWA picks up new deploys without a manual reinstall.
-  // Static assets in /_next/static/ are versioned by Next.js (immutable), so
-  // those keep their long-cache; only freshly-rendered routes are forced to
-  // re-validate.
   async headers() {
     return [
       {
         source: "/((?!_next/static|_next/image|.*\\.(?:js|css|png|jpg|jpeg|svg|webp|woff|woff2|ico)$).*)",
-        headers: [
-          { key: "Cache-Control", value: "no-store, must-revalidate" },
-        ],
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
-      {
-        source: "/manifest.webmanifest",
-        headers: [
-          { key: "Cache-Control", value: "no-cache" },
-        ],
-      },
+      { source: "/manifest.webmanifest", headers: [{ key: "Cache-Control", value: "no-cache" }] },
     ];
   },
 };
